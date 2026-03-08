@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Beautiful Data — Autonomous Pretraining Research</title>
+    <meta name="description" content="Autonomous pretraining research swarm. Give an AI agent a real LLM training setup and let it experiment autonomously.">
+    <style>
+        :root {
+            --bg: #0a0a0a;
+            --fg: #e8e8e8;
+            --muted: #888;
+            --accent: #6ee7b7;
+            --code-bg: #161616;
+            --border: #222;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--fg);
+            line-height: 1.7;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 4rem 2rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            color: var(--muted);
+            font-size: 1.1rem;
+            margin-bottom: 3rem;
+        }
+
+        .quote {
+            border-left: 3px solid var(--accent);
+            padding: 1rem 1.5rem;
+            margin: 2rem 0;
+            color: var(--muted);
+            font-style: italic;
+            font-size: 0.95rem;
+            line-height: 1.8;
+        }
+
+        h2 {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-top: 3rem;
+            margin-bottom: 1rem;
+            color: var(--accent);
+        }
+
+        p {
+            margin-bottom: 1.2rem;
+            color: #ccc;
+        }
+
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+
+        .metric {
+            background: var(--code-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.2rem;
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            color: var(--accent);
+        }
+
+        .metric-label {
+            font-size: 0.8rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 0.3rem;
+        }
+
+        .files {
+            list-style: none;
+            margin: 1rem 0;
+        }
+
+        .files li {
+            padding: 0.6rem 0;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            gap: 1rem;
+        }
+
+        .files li:last-child { border-bottom: none; }
+
+        .file-name {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            color: var(--accent);
+            white-space: nowrap;
+            font-size: 0.9rem;
+        }
+
+        .file-desc {
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+
+        code {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            background: var(--code-bg);
+            padding: 0.15em 0.4em;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        pre {
+            background: var(--code-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            overflow-x: auto;
+            margin: 1.5rem 0;
+            font-size: 0.85rem;
+            line-height: 1.6;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+        }
+
+        a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .cta {
+            display: inline-block;
+            margin-top: 1rem;
+            padding: 0.8rem 2rem;
+            background: var(--accent);
+            color: var(--bg);
+            font-weight: 600;
+            border-radius: 6px;
+            font-size: 1rem;
+            transition: opacity 0.2s;
+        }
+
+        .cta:hover {
+            opacity: 0.85;
+            text-decoration: none;
+        }
+
+        footer {
+            margin-top: 4rem;
+            padding-top: 2rem;
+            border-top: 1px solid var(--border);
+            color: var(--muted);
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Beautiful Data</h1>
+        <p class="subtitle">Autonomous Pretraining Research Swarm</p>
+
+        <div class="quote">
+            One day, frontier AI research used to be done by meat computers in between eating, sleeping, having other fun, and synchronizing once in a while using sound wave interconnect in the ritual of "group meeting". That era is long gone. Research is now entirely the domain of autonomous swarms of AI agents running across compute cluster megastructures in the skies.
+            <br><br>&mdash; Andrej Karpathy, March 2026
+        </div>
+
+        <p>
+            Give an AI agent a small but real LLM training setup and let it experiment autonomously overnight.
+            It modifies the code, trains for 5 minutes, checks if the result improved, keeps or discards, and repeats.
+            You wake up in the morning to a log of experiments and a better model.
+        </p>
+
+        <h2>Baseline Metrics</h2>
+        <div class="metrics">
+            <div class="metric">
+                <div class="metric-value">0.998</div>
+                <div class="metric-label">val_bpb</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">5 min</div>
+                <div class="metric-label">time budget</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">50.3M</div>
+                <div class="metric-label">parameters</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">39.8%</div>
+                <div class="metric-label">MFU</div>
+            </div>
+        </div>
+
+        <h2>How It Works</h2>
+        <p>
+            The repo has three files that matter. You write the research program in Markdown,
+            the AI agent iterates on the training code, and the infrastructure stays fixed.
+        </p>
+
+        <ul class="files">
+            <li>
+                <span class="file-name">train.py</span>
+                <span class="file-desc">Model, optimizer, training loop &mdash; the agent modifies this</span>
+            </li>
+            <li>
+                <span class="file-name">program.md</span>
+                <span class="file-desc">Agent instructions &mdash; the human modifies this</span>
+            </li>
+            <li>
+                <span class="file-name">prepare.py</span>
+                <span class="file-desc">Data prep &amp; runtime utilities &mdash; fixed, not modified</span>
+            </li>
+        </ul>
+
+        <h2>Quick Start</h2>
+<pre><code># Install uv project manager
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install dependencies
+uv sync
+
+# Download data and train tokenizer (one-time, ~2 min)
+uv run prepare.py
+
+# Run a single training experiment (~5 min)
+uv run train.py</code></pre>
+
+        <p>
+            Then spin up your AI agent, point it at <code>program.md</code>, and let it run autonomously.
+        </p>
+
+        <a class="cta" href="https://github.com/mz00m/autoresearch">View on GitHub</a>
+
+        <footer>
+            <p>
+                Based on <a href="https://github.com/karpathy/nanochat">nanochat</a> by Andrej Karpathy.
+                Licensed under MIT.
+            </p>
+        </footer>
+    </div>
+</body>
+</html>
