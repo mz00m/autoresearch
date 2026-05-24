@@ -96,15 +96,19 @@ def generate_tickets(pf: Portfolio, as_of: date, *,
 
     pf.expire_pending()  # any leftover unfilled tickets from yesterday die
     tickets: list[Ticket] = []
-    # Concentration caps default-on: prevents any BUY that would push a
-    # single sector >40%, correlated cluster >60%, or single symbol >50%.
-    # Pre-seed open_exposure from current holdings so cumulative caps work.
+    # Concentration limits are OPT-IN via FUND_CONCENTRATION_MANDATE=1. The
+    # bench includes deliberately-concentrated strategies (dual_momentum
+    # picks one asset, top_n_momentum can pick two in the same sector) and
+    # defaulting on breaks them. Turn it on when running a diversification
+    # mandate where overconcentration is the bigger risk than missing trends.
     open_exposure = {sym: pos.qty * prices.get(sym, pos.avg_cost)
                      for sym, pos in pf.positions.items() if pos.qty}
+    limits = ConcentrationLimits() if _os.environ.get(
+        "FUND_CONCENTRATION_MANDATE") == "1" else None
     engine = RiskEngine(principal=pf.principal, equity=equity,
                         mode=AccountMode.CASH, settled_cash=pf.cash,
                         open_exposure=open_exposure,
-                        concentration_limits=ConcentrationLimits())
+                        concentration_limits=limits)
 
     # Process SELLs first so cash frees up for BUYs (we won't actually fill
     # until closeout, but the ticket ordering matters for the human).
@@ -126,6 +130,10 @@ def generate_tickets(pf: Portfolio, as_of: date, *,
             buys.append((sym, delta, px))
 
     # SELLs: no risk_engine check needed (reduces risk); just verify owned.
+    # Net the freed exposure out of the engine's open_exposure dict so the
+    # subsequent BUY checks see the post-rotation book, not the pre-rotation
+    # one. Without this, rotating from 60/40 → top_n_momentum would have the
+    # engine reject the new BUYs because it thinks SPY+AGG is still on book.
     for sym, qty, px in sells:
         cur = pf.positions.get(sym)
         if cur is None or cur.qty + 1e-9 < qty:
@@ -136,6 +144,12 @@ def generate_tickets(pf: Portfolio, as_of: date, *,
                    symbol=sym, side="SELL", qty=qty, ref_price=round(px, 4),
                    rationale=rationale, risk_max_loss=0.0)
         tickets.append(t)
+        # Free the exposure for downstream BUY checks
+        freed = qty * px
+        existing = engine.open_exposure.get(sym, 0.0)
+        engine.open_exposure[sym] = max(0.0, existing - freed)
+        # Also free the cash so the cash-availability check passes
+        engine.settled_cash = (engine.settled_cash or 0.0) + freed
 
     # BUYs: each must clear risk_engine.check() AND not breach wash-sale.
     # Process largest first so we don't accidentally approve small ones that

@@ -49,7 +49,9 @@ def main() -> int:
     print(f"\n{len(pf.pending)} pending ticket(s) for {pf.active_strategy}:")
     for t in pf.pending:
         notional = t.qty * t.ref_price
-        print(f"  {t.side:4s} {t.qty:>5d} {t.symbol:<5s} ~${t.ref_price:,.2f}"
+        qty_str = (f"{int(t.qty):>5d}" if t.qty == int(t.qty)
+                   else f"{t.qty:>8.4f}")
+        print(f"  {t.side:4s} {qty_str} {t.symbol:<5s} ~${t.ref_price:,.2f}"
               f"   ${notional:,.0f}   {t.rationale[:60]}")
 
     if args.dry_run:
