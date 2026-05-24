@@ -161,6 +161,43 @@ class AlpacaBroker:
             ))
         return out
 
+    def place_trailing_stop(self, symbol: str, qty: float,
+                            trail_percent: float,
+                            client_id: str | None = None) -> dict:
+        """POST a trailing-stop SELL. Triggers a market sell if price drops
+        `trail_percent` from its rolling peak. GTC. Broker re-anchors the
+        trigger up as the price climbs — locks in gains automatically."""
+        body = {
+            "symbol": symbol.upper(),
+            "qty": str(qty),
+            "side": "sell",
+            "type": "trailing_stop",
+            "time_in_force": "gtc",
+            "trail_percent": str(trail_percent),
+        }
+        if client_id:
+            body["client_order_id"] = client_id
+        try:
+            return self._req("POST", "/v2/orders", body=body)
+        except RuntimeError as e:
+            return {"error": str(e)}
+
+    def open_stops_for(self, symbol: str) -> list[dict]:
+        """Existing open stop / trailing_stop SELL orders for `symbol`.
+        Used to avoid double-stopping a position."""
+        try:
+            rows = self._req("GET", "/v2/orders",
+                              params={"status": "open",
+                                      "symbols": symbol.upper(),
+                                      "limit": "50"})
+        except RuntimeError:
+            return []
+        if not isinstance(rows, list):
+            return []
+        return [r for r in rows
+                if (r.get("side") or "").lower() == "sell"
+                and (r.get("type") or "") in ("stop", "trailing_stop")]
+
     def cancel_open_orders(self) -> dict:
         """DELETE /v2/orders — cancels every open order at the broker.
         Returns {"canceled": N, "errors": [...]}."""

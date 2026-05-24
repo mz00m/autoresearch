@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-type Action = "morning" | "closeout" | "refresh-cache" | "sync-alpaca" | "cancel-alpaca";
+type Action = "morning" | "closeout" | "refresh-cache" | "sync-alpaca" | "place-stops" | "cancel-alpaca";
 
 const ACTIONS: { id: Action; label: string; help: string; endpoint: string; body?: object; danger?: boolean }[] = [
   {
@@ -30,6 +30,13 @@ const ACTIONS: { id: Action; label: string; help: string; endpoint: string; body
     help: "Overwrite local portfolio state with Alpaca's actual cash + positions. Use after manual broker trades or after running the simulator.",
     endpoint: "/api/sync-from-broker",
     body: { broker: "alpaca" },
+  },
+  {
+    id: "place-stops",
+    label: "Place 15% trailing stops",
+    help: "Submit a GTC trailing-stop SELL at Alpaca for every held position that doesn't already have one. Re-anchors automatically as price rises — locks in gains.",
+    endpoint: "/api/place-stops",
+    body: { broker: "alpaca", trail: 15 },
   },
   {
     id: "cancel-alpaca",
