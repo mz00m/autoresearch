@@ -15,13 +15,19 @@ from __future__ import annotations
 import csv
 import io
 import json
+import os
 import urllib.request
 from datetime import date, datetime
 
 from fund.data.pit import PriceSeries
 
-# SEC asks for a descriptive UA with contact info.
-USER_AGENT = "autoresearch-fund/0.1 (research; contact: set-your-email@example.com)"
+# SEC asks for a descriptive UA with contact info. Set FUND_CONTACT_EMAIL (or the
+# whole FUND_SEC_USER_AGENT) in your shell so your email stays out of the repo.
+_CONTACT = os.environ.get("FUND_CONTACT_EMAIL", "set-your-email@example.com")
+USER_AGENT = os.environ.get(
+    "FUND_SEC_USER_AGENT",
+    f"autoresearch-fund/0.1 (research; contact: {_CONTACT})",
+)
 
 
 class DataUnavailable(Exception):

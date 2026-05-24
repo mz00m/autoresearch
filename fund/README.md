@@ -47,20 +47,45 @@ backtest -> paper -> small real (cash) -> full $25k (cash) -> **graduate** ->
 margin. Margin is for efficiency, never uncovered leverage; the one rule never
 changes. The cash->margin graduation gate is pre-registered in `fund.md` §5.
 
-## Run the tests
+## Run it on your Mac (real data, no dependencies)
+
+The entire `fund/` framework is **pure Python stdlib** — no numpy, no torch,
+nothing to `pip install`. (That's separate from the parent autoresearch ML repo,
+which does need uv + a GPU.) From the repo root:
 
 ```bash
-python3 fund/tests/test_risk_engine.py     # 12 tests — the safety core
-python3 fund/tests/test_evaluator.py       # 7 tests — the scorer
-python3 fund/ledger.py                      # initialize the research ledger
+# 1. Python 3.11+ (3.9+ works). On macOS: brew install python@3.11
+python3 --version
+
+# 2. Get the branch
+git checkout claude/ai-investment-agents-JDN5B && git pull
+
+# 3. Tests (25) — the safety core, the scorer, the look-ahead guard
+python3 fund/tests/test_risk_engine.py
+python3 fund/tests/test_evaluator.py
+python3 fund/tests/test_pit.py
+
+# 4. The full research loop on REAL ETF data (needs open network)
+export FUND_CONTACT_EMAIL="you@example.com"   # SEC EDGAR wants a real contact
+python3 -m fund.run_research --source real    # fetches Stooq + FRED, caches locally
+
+#    (offline / deterministic instead:)
+python3 -m fund.run_research --source synthetic
 ```
+
+`--source real` writes real entries to `research_ledger.tsv` and tells you
+whether dual-momentum survives the OOS deflated-Sharpe bar on actual history.
+Honest prior: a single naive momentum rule likely won't clear 0.95 — that's the
+system being right, not broken. Fetched data is cached under `fund/data/cache/`
+(gitignored) so reruns are reproducible.
 
 ## What's built vs. next
 
-**Built (the un-modifiable spine):** the risk engine, the scorer, the ledger,
-the policy (`fund.md`), the loop (`program.md`), and the agent roles — all tested
-and stdlib-only.
+**Built:** the un-modifiable spine (risk engine, scorer, ledger, `fund.md`,
+`program.md`, agent roles) **and** the point-in-time data pipeline (Stooq + FRED +
+SEC EDGAR with synthetic fallback), the dual-momentum strategy, the fixed
+backtest protocol, and the end-to-end research loop. 25 tests, stdlib-only.
 
-**Next:** point-in-time data pipeline (SEC EDGAR + FRED + a price feed), one
-end-to-end strategy spec (e.g. dual-momentum ETF) run through the protocol, an
-IBKR paper-trading adapter, and a vector-store journal for the post-mortem agent.
+**Next:** an IBKR paper-trading adapter + the human-approval ticket flow
+(Phase 1a), more strategy families to give the deflated-Sharpe correction real
+breadth, and an append-only journal/memory for the post-mortem agent.
