@@ -21,6 +21,7 @@ import os
 from datetime import date, datetime
 from typing import Iterable
 
+from fund.decision import DecisionConfig, evaluate as evaluate_decision
 from fund.portfolio import EquityPoint, Portfolio, Ticket
 
 REPORT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -201,6 +202,17 @@ table tr:last-child td { border-bottom: none; }
 .rationale { color: #444; font-size: 12px; margin-top: 2px; }
 .muted { color: #666; }
 .empty { color: #888; font-style: italic; padding: 12px 0; }
+.verdict { padding: 14px 16px; border-left: 3px solid #1a1a1a; background: #fff; margin: 14px 0 0; font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
+.verdict .label { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #666; }
+.verdict .head { font-size: 16px; font-weight: 600; margin-top: 2px; }
+.verdict.ok      { border-left-color: #1a7d3a; }
+.verdict.ok      .head { color: #1a7d3a; }
+.verdict.watch   { border-left-color: #b88216; }
+.verdict.watch   .head { color: #8a5e0a; }
+.verdict.iterate { border-left-color: #a83232; }
+.verdict.iterate .head { color: #a83232; }
+.verdict .reason { color: #444; margin-top: 4px; font-size: 13px; }
+.verdict .stats  { color: #666; font-size: 12px; margin-top: 8px; font-variant-numeric: tabular-nums; }
 footer { margin-top: 56px; padding-top: 16px; border-top: 1px solid #dcdcdc; color: #888; font-size: 11px; font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
 """
 
@@ -292,6 +304,31 @@ def _holdings_table(pf: Portfolio, prices: dict[str, float]) -> str:
             '</tr></thead><tbody>' + "".join(rows) + '</tbody></table>')
 
 
+def _verdict_card(d) -> str:
+    """Compact 'right path or iterate' card driven by fund.decision.evaluate."""
+    if d.n_days == 0:
+        return ('<div class="verdict ok"><div class="label">Decision</div>'
+                '<div class="head">No track record yet</div>'
+                '<div class="reason">Run the loop for a few days before any verdict means anything.</div>'
+                '</div>')
+    cls = d.verdict
+    head = {"ok": "On track", "watch": "Watching", "iterate": "Consider iterating"}[cls]
+    return (
+        f'<div class="verdict {cls}">'
+        f'<div class="label">Decision &middot; {d.n_days}-day trailing</div>'
+        f'<div class="head">{head}</div>'
+        f'<div class="reason">{_html.escape(d.reason)}</div>'
+        f'<div class="stats">'
+        f'portfolio {d.trailing_return * 100:+.2f}%  &middot;  '
+        f'SPY {d.trailing_benchmark * 100:+.2f}%  &middot;  '
+        f'excess {d.trailing_excess * 100:+.2f}pp  &middot;  '
+        f'hit rate {d.hit_rate * 100:.0f}%  &middot;  '
+        f'worst day {d.worst_day * 100:+.2f}%  &middot;  '
+        f'dd -{d.current_drawdown * 100:.2f}%'
+        f'</div></div>'
+    )
+
+
 def _log_table(rows: list[dict], n: int = 14) -> str:
     if not rows:
         return '<div class="empty">No closeouts logged yet.</div>'
@@ -350,6 +387,9 @@ def render(pf: Portfolio, *, today_tickets: list[Ticket] | None = None,
     equity_svg = _equity_chart(pf.history, spy_curve)
     dd_svg = _drawdown_chart(pf.history)
 
+    decision = evaluate_decision(log_rows, DecisionConfig())
+    verdict_html = _verdict_card(decision)
+
     strategy_label = pf.active_strategy
     if pf.active_strategy_params:
         strategy_label += " " + ", ".join(f"{k}={v}" for k, v in pf.active_strategy_params.items())
@@ -377,6 +417,8 @@ def render(pf: Portfolio, *, today_tickets: list[Ticket] | None = None,
   {_kpi("Drawdown", f'<span class="neg">-{dd * 100:.2f}%</span>' if dd > 0 else "0.00%")}
   {_kpi("Cash", _fmt_money(pf.cash))}
 </div>
+
+{verdict_html}
 
 <h2>Track record</h2>
 {equity_svg}
