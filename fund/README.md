@@ -10,15 +10,28 @@ rule* in code that agents cannot modify.
 > **process**: tireless research, hard risk limits, total discipline, and a
 > perfect audit trail. See `fund.md` for the honest framing.
 
+## What you get
+
+Two coupled loops:
+
+1. **Overnight research** (`run_research.py`) — generates candidate strategies,
+   scores each on a locked OOS slice with deflated Sharpe, logs every verdict
+   to `research_ledger.tsv`.
+2. **Daily operations** (`morning.py` + `closeout.py`) — for the strategy
+   currently driving the paper account, produce today's trade tickets (every
+   BUY clears the risk engine), fill them at the actual close, mark to market,
+   append one row to `daily_log.tsv`, regenerate the daily HTML card.
+
 ## How it maps to autoresearch
 
 | autoresearch | here | who edits |
 | --- | --- | --- |
-| `prepare.py` (read-only metric) | `risk_engine.py` + `evaluator.py` (the one rule + overfitting-proof scorer) | **nobody** (sacred) |
-| `train.py` (iterated) | strategy specs (to be added by the quant agent) | agents |
+| `prepare.py` (read-only metric) | `risk_engine.py` + `evaluator.py` | **nobody** (sacred) |
+| `train.py` (iterated) | strategy specs in `strategy/` | agents |
 | `program.md` (the org) | `fund.md` (policy) + `program.md` (loop) + `agents/*.md` | **human** |
 | `results.tsv` (keep/discard) | `research_ledger.tsv` via `ledger.py` | agents (append-only) |
 | 5-min run, `val_bpb` | fixed backtest protocol, OOS deflated Sortino | the loop |
+| — (new) | `daily_log.tsv` + `daily.html` | the daily ops loop |
 
 The crucial adaptation: autoresearch's fast hypothesis search is, in markets, a
 **machine for manufacturing overfit strategies**. So the scorer is hardened with
@@ -41,6 +54,19 @@ were tried. Simplicity is a hard tiebreaker. See `fund.md` §8.
 (human-gated tickets) · `post_mortem` (attribution + memory). Minimum viable
 team: pm + quant + risk_manager + execution + post_mortem.
 
+## Strategy bench (`strategy/`)
+
+| Strategy | Params | Notes |
+| --- | --- | --- |
+| `sixty_forty` | 0 | Fixed 60% SPY / 40% AGG. The baseline anyone has to beat. |
+| `dual_momentum` | 1 (lookback) | Antonacci-style GEM: best of universe, only if it beats T-bills. |
+| `risk_parity` | 1 (vol window) | Inverse-volatility weights — bond-heavy by construction. |
+
+Add a strategy by writing one file in `strategy/` and one line in
+`strategy/registry.py`. The active strategy lives in `portfolio_state.json` as
+a string, so switching is an explicit human decision (logged in git), not an
+LLM whim.
+
 ## Phased rollout (`fund.md` §4-5)
 
 backtest -> paper -> small real (cash) -> full $25k (cash) -> **graduate** ->
@@ -60,32 +86,59 @@ python3 --version
 # 2. Get the branch
 git checkout claude/ai-investment-agents-JDN5B && git pull
 
-# 3. Tests (25) — the safety core, the scorer, the look-ahead guard
-python3 fund/tests/test_risk_engine.py
-python3 fund/tests/test_evaluator.py
-python3 fund/tests/test_pit.py
+# 3. All tests (75) — safety core, scorer, look-ahead guard, ops loop, sources
+python3 fund/tests/run_all.py
 
-# 4. The full research loop on REAL ETF data (needs open network)
+# 4. The full overnight research loop on REAL ETF data (Yahoo + FRED)
 export FUND_CONTACT_EMAIL="you@example.com"   # SEC EDGAR wants a real contact
-python3 -m fund.run_research --source real    # fetches Stooq + FRED, caches locally
-
-#    (offline / deterministic instead:)
-python3 -m fund.run_research --source synthetic
+python3 -m fund.run_research --source real
 ```
 
-`--source real` writes real entries to `research_ledger.tsv` and tells you
-whether dual-momentum survives the OOS deflated-Sharpe bar on actual history.
-Honest prior: a single naive momentum rule likely won't clear 0.95 — that's the
-system being right, not broken. Fetched data is cached under `fund/data/cache/`
-(gitignored) so reruns are reproducible.
+### The daily ops loop
+
+```bash
+# Initialize a paper account ($25k, 60/40 to start)
+python3 -m fund.portfolio init --principal 25000 --strategy sixty_forty
+
+# MORNING (before market open): generate today's tickets
+python3 -m fund.morning --source real
+# -> prints the guide; every BUY cleared by risk_engine.check()
+# -> pending tickets saved to portfolio_state.json
+
+# CLOSEOUT (after market close): fill pending tickets at today's actual close
+python3 -m fund.closeout --source real
+# -> marks to market, appends a row to daily_log.tsv
+
+# SIMULATE 30 days on real history to see what the loop produces
+python3 -m fund.simulate --days 30 --strategy sixty_forty
+# -> writes daily.html — open it: `open fund/daily.html`
+```
+
+### What the simulator says today
+
+Three strategies, 90 calendar days ending 2025-04-30, real Yahoo data, $25k
+paper account, 5bp slippage modeled:
+
+| Strategy | Cum return | Max DD | Ending equity | vs SPY (−7.65%) |
+| --- | --- | --- | --- | --- |
+| `sixty_forty`    | −1.54%  | −4.56% | $24,614 | +6.1pp |
+| `risk_parity`    | +4.76%  | −0.17% | $26,191 | +12.4pp |
+| `dual_momentum`  | +18.48% | −3.73% | $29,619 | +26.1pp |
+
+`dual_momentum` ended the window holding GLD — it caught the gold rally while
+equities sold off. **This is one window. It does not constitute alpha** — it's
+the demo that the daily loop actually picks up signal from real prices and
+turns it into trades. The graduation gate in `fund.md` §5 demands much more.
 
 ## What's built vs. next
 
 **Built:** the un-modifiable spine (risk engine, scorer, ledger, `fund.md`,
-`program.md`, agent roles) **and** the point-in-time data pipeline (Stooq + FRED +
-SEC EDGAR with synthetic fallback), the dual-momentum strategy, the fixed
-backtest protocol, and the end-to-end research loop. 25 tests, stdlib-only.
+`program.md`, agent roles), the point-in-time data pipeline (Yahoo + FRED + SEC
+EDGAR with synthetic fallback), three strategy specs, the fixed backtest
+protocol, the overnight research loop, **and** the daily ops loop (portfolio
+state, morning trade guide, end-of-day closeout, HTML daily card, multi-day
+simulator). 75 tests, stdlib-only.
 
-**Next:** an IBKR paper-trading adapter + the human-approval ticket flow
-(Phase 1a), more strategy families to give the deflated-Sharpe correction real
-breadth, and an append-only journal/memory for the post-mortem agent.
+**Next:** IBKR paper-trading adapter for live execution, append-only post-mortem
+journal feeding the daily card, drift detector (live Sharpe vs. backtest band),
+strategy A/B comparison across the bench.
