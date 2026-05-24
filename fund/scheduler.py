@@ -72,8 +72,12 @@ JOBS: list[Job] = [
         args=["python3", "-m", "fund.morning", "--source", "auto", "--quiet"],
         description="Generate today's pending tickets"),
     Job(name="place_stops", hour=10, minute=30,
-        args=["python3", "-m", "fund.place_stops", "--broker", "alpaca", "--yes"],
-        description="Trailing stops on new broker positions",
+        # No --trail override -> place_stops uses per-symbol table:
+        # USO 10%, TQQQ/SOXL 15%, SPY 8%, AGG 5%, BIL 3%, etc. Calibrated
+        # so a typical 1-2 day move doesn't whipsaw out of a position.
+        args=["python3", "-m", "fund.place_stops", "--broker", "alpaca",
+              "--yes"],
+        description="Per-symbol trailing stops on new broker positions",
         requires_broker=True),
     Job(name="sync_from_broker", hour=10, minute=35,
         args=["python3", "-m", "fund.sync_from_broker", "--broker", "alpaca", "--yes"],

@@ -66,14 +66,41 @@ def factor_variants() -> list[tuple[str, dict, str]]:
     return out
 
 
+def aggressive_variants() -> list[tuple[str, dict, str]]:
+    """High-conviction concentrated bets — the hedge-fund-style options."""
+    out: list[tuple[str, dict, str]] = []
+    for lb in (63, 126, 189, 252):
+        out.append(("dual_momentum", {"lookback_days": lb}, f"dual-mom {lb}d"))
+    for n in (1, 2):
+        for lb in (42, 63, 126):
+            out.append(("leveraged_momentum",
+                        {"n": n, "lookback_days": lb},
+                        f"lev-mom n={n} {lb}d"))
+    out.append(("multi", {"allocations": [
+        ["dual_momentum", {"lookback_days": 252}, 0.7],
+        ["leveraged_momentum", {"n": 2, "lookback_days": 63}, 0.3]
+    ]}, "70% dual + 30% lev"))
+    out.append(("multi", {"allocations": [
+        ["dual_momentum", {"lookback_days": 252}, 0.5],
+        ["leveraged_momentum", {"n": 2, "lookback_days": 63}, 0.5]
+    ]}, "50% dual + 50% lev"))
+    out.append(("multi", {"allocations": [
+        ["skip_month_momentum", {"n": 2, "long_lookback": 252, "skip_lookback": 21}, 0.5],
+        ["permanent_portfolio", {}, 0.5]
+    ]}, "50% skip-mom + 50% PP"))
+    return out
+
+
 def full_grid() -> list[tuple[str, dict, str]]:
     """Union of all variant generators — the full hypothesis set."""
+    import json as _json
     seen = set()
     out: list[tuple[str, dict, str]] = []
     for batch in (momentum_variants(), trend_variants(),
-                  defensive_variants(), factor_variants()):
+                  defensive_variants(), factor_variants(),
+                  aggressive_variants()):
         for spec in batch:
-            key = (spec[0], tuple(sorted(spec[1].items())))
+            key = (spec[0], _json.dumps(spec[1], sort_keys=True))
             if key in seen:
                 continue
             seen.add(key)

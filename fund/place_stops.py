@@ -30,6 +30,24 @@ from fund.portfolio import Portfolio
 
 DEFAULT_TRAIL_PCT = 15.0
 
+# Per-symbol trail overrides — used when --trail isn't passed. Calibrated
+# so a typical 1-2 day move doesn't whipsaw the stop. Tighter than 15%
+# only where the underlying has low realized vol.
+PER_SYMBOL_TRAIL: dict[str, float] = {
+    # 3x leveraged equity — 5% underlying ≈ 15% on the ETF
+    "TQQQ": 15.0, "SOXL": 15.0, "UPRO": 15.0,
+    # 3x leveraged bond / 2x leveraged gold
+    "TMF": 18.0, "UGL": 12.0,
+    # High-vol single-commodity ETFs
+    "USO": 10.0, "URA": 12.0,
+    # Sector ETFs (moderate vol)
+    "XLE": 10.0,
+    # Broad equity / crypto
+    "SPY": 8.0, "QQQ": 9.0, "EFA": 8.0, "IWM": 10.0, "BITO": 18.0,
+    # Bonds, gold, cash-like (low vol)
+    "AGG": 5.0, "TLT": 8.0, "GLD": 8.0, "BIL": 3.0,
+}
+
 
 def _confirm(prompt: str) -> bool:
     try:
@@ -38,11 +56,19 @@ def _confirm(prompt: str) -> bool:
         return False
 
 
+def _trail_for(symbol: str, override: float | None) -> float:
+    """If user passed --trail, that wins. Else per-symbol; else default."""
+    if override is not None:
+        return override
+    return PER_SYMBOL_TRAIL.get(symbol.upper(), DEFAULT_TRAIL_PCT)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="GTC trailing-stop on every position.")
     ap.add_argument("--broker", required=True, help="alpaca | ibkr (alpaca only for now)")
-    ap.add_argument("--trail", type=float, default=DEFAULT_TRAIL_PCT,
-                    help=f"trailing percent (default {DEFAULT_TRAIL_PCT})")
+    ap.add_argument("--trail", type=float, default=None,
+                    help=f"override trailing percent (default = per-symbol table; "
+                         f"fallback {DEFAULT_TRAIL_PCT})")
     ap.add_argument("--yes", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
@@ -63,16 +89,17 @@ def main() -> int:
         print("no broker-side positions — nothing to protect.")
         return 0
 
-    print(f"\nWould place {args.trail}% trailing-stop SELL on:")
-    plan: list[tuple[str, int]] = []
+    print(f"\nWould place trailing-stop SELL on:")
+    plan: list[tuple[str, int, float]] = []
     for sym, qty in sorted(held.items()):
         existing = broker.open_stops_for(sym)   # type: ignore[attr-defined]
         if existing:
             print(f"  - {sym}  qty {qty}  SKIP (already has "
                   f"{len(existing)} open stop order)")
             continue
-        print(f"  - {sym}  qty {qty}")
-        plan.append((sym, int(qty)))
+        trail = _trail_for(sym, args.trail)
+        print(f"  - {sym}  qty {qty}  @ {trail}% trail")
+        plan.append((sym, int(qty), trail))
 
     if not plan:
         print("\nevery position already has a stop. nothing to do.")
@@ -88,9 +115,9 @@ def main() -> int:
 
     placed = 0
     errors: list[str] = []
-    for sym, qty in plan:
+    for sym, qty, trail in plan:
         result = broker.place_trailing_stop(   # type: ignore[attr-defined]
-            sym, qty, args.trail,
+            sym, qty, trail,
             client_id=f"fund-trail-{sym.lower()}",
         )
         if "error" in result:
@@ -99,7 +126,7 @@ def main() -> int:
         else:
             placed += 1
             print(f"  -> {sym}  order_id={result.get('id','?')}  "
-                  f"trail {args.trail}%")
+                  f"trail {trail}%")
 
     print(f"\n{placed} trailing-stop(s) submitted, {len(errors)} error(s).")
     if errors:

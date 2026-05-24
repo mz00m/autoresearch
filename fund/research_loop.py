@@ -24,10 +24,15 @@ from fund.proper_research import run as proper_run
 
 
 CUTS = [
+    (date(2012, 12, 31), date(2024, 12, 31)),   # 12y OOS
+    (date(2014, 12, 31), date(2024, 12, 31)),   # 10y OOS
     (date(2015, 12, 31), date(2024, 12, 31)),
+    (date(2016, 12, 31), date(2024, 12, 31)),
     (date(2017, 12, 31), date(2024, 12, 31)),
+    (date(2018, 12, 31), date(2024, 12, 31)),
     (date(2019, 12, 31), date(2024, 12, 31)),
-    (date(2021, 12, 31), date(2024, 12, 31)),
+    (date(2020, 12, 31), date(2024, 12, 31)),
+    (date(2021, 12, 31), date(2024, 12, 31)),   # 3y OOS
 ]
 
 
