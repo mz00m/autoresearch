@@ -23,6 +23,9 @@ from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 from typing import Iterable
 
+from fund.tax import (LotPolicy, RealizedLot, TaxLot, realize_sale,
+                      summarize_realized)
+
 STATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                           "portfolio_state.json")
 
@@ -30,7 +33,23 @@ STATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 @dataclass
 class Position:
     qty: float = 0.0          # shares — float to support fractional (Alpaca, Schwab)
-    avg_cost: float = 0.0     # $/share, cost basis
+    avg_cost: float = 0.0     # $/share, weighted cost basis
+    # Per-acquisition lots — list of TaxLot dicts when serialized to JSON.
+    # The aggregate qty / avg_cost above stay synchronized for back-compat
+    # with code that doesn't care about tax lots.
+    lots: list = field(default_factory=list)   # list[TaxLot]
+
+    def __post_init__(self):
+        # When loaded from JSON, lots come in as dicts; coerce to TaxLot.
+        coerced = []
+        for l in self.lots:
+            if isinstance(l, TaxLot):
+                coerced.append(l)
+            elif isinstance(l, dict):
+                coerced.append(TaxLot(**l))
+            else:
+                raise TypeError(f"Position.lots accepts TaxLot or dict, got {type(l)}")
+        self.lots = coerced
 
 
 @dataclass
@@ -70,6 +89,11 @@ class Portfolio:
     active_strategy_params: dict = field(default_factory=dict)
     inception: str = ""
     last_marked: str = ""
+    # Tax-lot bookkeeping
+    lot_policy: str = LotPolicy.TAX_OPTIMAL.value  # fifo|lifo|hifo|lt_first|tax_optimal
+    realized: list = field(default_factory=list)   # list[RealizedLot dicts]
+    # Wash-sale tracking: symbol -> ISO date of most recent sell-at-loss
+    last_loss_sales: dict = field(default_factory=dict)
 
     # --- accounting ---------------------------------------------------------
     def position_value(self, prices: dict[str, float]) -> float:
@@ -94,7 +118,7 @@ class Portfolio:
                    slippage_bps: float = 5.0) -> None:
         """Commit a fill. Cash and position arithmetic; never bypasses the
         already-checked risk verdict at ticket creation time. Supports
-        fractional share quantities."""
+        fractional share quantities. Maintains tax lots + wash-sale tracking."""
         if ticket.status != "pending":
             raise ValueError(f"cannot fill non-pending ticket {ticket.ticket_id}")
         sign = +1 if ticket.side == "BUY" else -1
@@ -106,6 +130,10 @@ class Portfolio:
             if notional > self.cash + 1e-6:
                 ticket.status = "rejected"
                 return
+            # Add a new tax lot at the effective fill price
+            pos.lots.append(TaxLot(date_acquired=on.isoformat(),
+                                   qty=ticket.qty,
+                                   cost_per_share=effective))
             new_qty = pos.qty + ticket.qty
             if new_qty > 0:
                 pos.avg_cost = (pos.avg_cost * pos.qty + effective * ticket.qty) / new_qty
@@ -115,11 +143,37 @@ class Portfolio:
             if ticket.qty > pos.qty + 1e-9:
                 ticket.status = "rejected"
                 return
+            # Realize against tax lots using the configured policy
+            policy = LotPolicy(self.lot_policy)
+            new_lots, realized = realize_sale(
+                pos.lots, ticket.qty, effective, on, policy=policy,
+            )
+            pos.lots = new_lots
             pos.qty -= ticket.qty
             self.cash += notional
-            if pos.qty <= 1e-9:
+            # Recompute avg_cost from remaining lots
+            if pos.qty > 1e-9 and pos.lots:
+                total_basis = sum(l.qty * l.cost_per_share for l in pos.lots)
+                pos.avg_cost = total_basis / pos.qty
+            else:
                 pos.qty = 0.0
                 pos.avg_cost = 0.0
+                pos.lots = []
+            # Record realized PnL + update wash-sale tracking
+            for r in realized:
+                self.realized.append({
+                    "date_acquired": r.date_acquired,
+                    "date_sold": r.date_sold,
+                    "symbol": ticket.symbol,
+                    "qty": r.qty,
+                    "cost_per_share": r.cost_per_share,
+                    "sale_price": r.sale_price,
+                    "long_term": r.long_term,
+                    "realized_pnl": round(r.realized_pnl, 4),
+                })
+                if r.realized_pnl < 0:
+                    # Most-recent loss sale per symbol drives the wash window
+                    self.last_loss_sales[ticket.symbol] = on.isoformat()
         ticket.status = "filled"
         ticket.fill_date = on.isoformat()
         ticket.fill_price = round(effective, 4)
@@ -164,6 +218,9 @@ class Portfolio:
             active_strategy_params=raw.get("active_strategy_params", {}),
             inception=raw.get("inception", ""),
             last_marked=raw.get("last_marked", ""),
+            lot_policy=raw.get("lot_policy", LotPolicy.TAX_OPTIMAL.value),
+            realized=raw.get("realized", []),
+            last_loss_sales=raw.get("last_loss_sales", {}),
         )
 
     def save(self, path: str = STATE_PATH) -> None:
@@ -178,9 +235,12 @@ class Portfolio:
             "active_strategy_params": self.active_strategy_params,
             "inception": self.inception,
             "last_marked": self.last_marked,
+            "lot_policy": self.lot_policy,
+            "realized": self.realized,
+            "last_loss_sales": self.last_loss_sales,
         }
         with open(path, "w") as f:
-            json.dump(raw, f, indent=2, sort_keys=False)
+            json.dump(raw, f, indent=2, sort_keys=False, default=str)
 
 
 # --- track-record metrics ---------------------------------------------------

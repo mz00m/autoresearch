@@ -23,6 +23,7 @@ from fund.data.loader import load_panel
 from fund.portfolio import Portfolio, Ticket
 from fund.risk_engine import AccountMode, Kind, Order, RiskEngine
 from fund.strategy.registry import build as build_strategy, universe_for
+from fund.tax import wash_sale_check
 
 REBALANCE_THRESHOLD = 0.01  # don't churn for sub-1% drift; spend bps elsewhere
 # Default: integer shares (IBKR cash-account semantics). Set to False to permit
@@ -128,10 +129,20 @@ def generate_tickets(pf: Portfolio, as_of: date, *,
                    rationale=rationale, risk_max_loss=0.0)
         tickets.append(t)
 
-    # BUYs: each must clear risk_engine.check(). Process largest first so we
-    # don't accidentally approve small ones that starve a primary position.
+    # BUYs: each must clear risk_engine.check() AND not breach wash-sale.
+    # Process largest first so we don't accidentally approve small ones that
+    # starve a primary position.
     buys.sort(key=lambda b: -b[1] * b[2])
     for sym, qty, px in buys:
+        # Wash-sale check: bought-back-too-soon after a loss sale voids the loss
+        wash = wash_sale_check(sym, as_of, pf.last_loss_sales)
+        if wash.blocked:
+            tickets.append(Ticket(
+                ticket_id=uuid.uuid4().hex[:8], created=as_of.isoformat(),
+                symbol=sym, side="BUY", qty=qty, ref_price=round(px, 4),
+                rationale=f"WASH-SALE DEFERRED: {wash.reason}",
+                risk_max_loss=0.0, status="rejected"))
+            continue
         order = Order(kind=Kind.LONG_EQUITY, symbol=sym, qty=float(qty), price=px)
         verdict = engine.check(order)
         if not verdict.approved:
