@@ -64,7 +64,10 @@ team: pm + quant + risk_manager + execution + post_mortem.
 | `top_n_momentum` | 2 (n, lookback) | Equal-weight top-N trending assets above the T-bill gate. Variance-reduced cousin of `dual_momentum`. |
 | `ma_crossover` | 2 (fast, slow) | Classic 50/200 SMA regime filter. Slow but rarely whipsawed. |
 | `leveraged_momentum` | 2 (n, lookback) | Top-N momentum over a leveraged-ETF universe (TQQQ, SOXL, UPRO, TMF, UGL). High vol; bounded liability still holds. |
-| `adaptive` | 1 (lookback) | Meta-allocator: each rebalance, picks the candidate with the best trailing-90d Sortino. The "learning" piece. |
+| `adaptive` | 1 (lookback) | Meta-allocator: each rebalance, picks the candidate with the best trailing-90d Sortino. Honest test shows this *underperforms* — kept for diagnostics, not recommended live. |
+| `stable_adaptive` | 2 (windows, margin) | Persistence-gated adaptive: requires multi-window agreement + switch margin to rotate. Less whipsaw but still middle-of-pack. |
+| `regime_aware` | 0 | **Forward-correlated** — classifies VIX + yield curve + SPY trend into CALM/NORMAL/STRESSED/PANIC and routes to the right strategy. Not trailing-return chasing. |
+| `multi` | N (allocations) | Weighted blend of underlying strategies: `[(name, params, weight)]` summing to 1.0. Default 60% top_n_momentum + 40% risk_parity. |
 
 Add a strategy by writing one file in `strategy/` and one line in
 `strategy/registry.py`. The active strategy lives in `portfolio_state.json` as
@@ -160,15 +163,29 @@ alpha** — the graduation gate in `fund.md` §5 demands much more.
 
 ## What's built vs. next
 
-**Built:** the un-modifiable spine (risk engine, scorer, ledger, `fund.md`,
-`program.md`, agent roles), the point-in-time data pipeline (Yahoo + FRED + SEC
-EDGAR with synthetic fallback), **seven** strategy specs (including a leveraged
-ETF strategy and an adaptive meta-allocator), the fixed backtest protocol, the
+**Built:** the un-modifiable spine (risk engine + concentration caps, scorer,
+ledger, `fund.md`, `program.md`, agent roles), the point-in-time data pipeline
+(Yahoo + FRED + SEC EDGAR with synthetic fallback), **ten** strategy specs
+including momentum, regime-aware, multi-strategy blend, leveraged ETFs, and
+two meta-allocators), tax-lot accounting with wash-sale checks, fractional
+shares (Alpaca/Schwab), drift-from-backtest detector (Welch t-test), the
 overnight research loop, the daily ops loop (portfolio state, morning trade
 guide, end-of-day closeout, HTML daily card with verdict, multi-day simulator,
-side-by-side strategy comparison), **broker adapters** for Alpaca and IBKR with
-a human-gated `send_orders` CLI, and a **Next.js dashboard** at `fund/ui/`.
-113 tests + CI on every push, stdlib-only on the Python side.
+side-by-side strategy comparison), **broker adapters** for Alpaca and IBKR
+with a human-gated `send_orders` CLI, and a **Next.js dashboard** at
+`fund/ui/` with a "Send to broker" button. 164 tests + CI on every push,
+stdlib-only on the Python side.
+
+### Data limitations to know
+
+Yahoo Finance is the price source and it's *not* survivorship-bias-free —
+it only includes currently-listed tickers. A strategy that historically would
+have held a delisted symbol (think LEH, GE pre-restructure, leveraged ETFs
+that closed) won't see those failures in backtests, which makes every
+strategy look slightly better than it actually was. For paper-account
+backtests on currently-listed ETFs this is mostly fine; for serious live
+deployment, swap to a research-grade source (CRSP, Sharadar) — costs ~$500-
+2000/year. Cheap upgrade if real money is involved; defer otherwise.
 
 ### Wiring it to a real broker
 

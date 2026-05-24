@@ -1,9 +1,17 @@
-import { formatMoney, readUiCache, type UiCache } from "@/lib/data";
+import { SendOrdersButton } from "@/components/SendOrdersButton";
+import {
+  formatMoney,
+  readPortfolio,
+  readUiCache,
+  type UiCache,
+} from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 
 export default async function RecommendationsPage() {
   const cache = await readUiCache();
+  const pf = await readPortfolio();
+  const hasPending = (pf?.pending?.length ?? 0) > 0;
   if (!cache) {
     return <Empty />;
   }
@@ -33,6 +41,8 @@ export default async function RecommendationsPage() {
           </code>
         </p>
       </header>
+
+      <SendOrdersButton hasPending={hasPending} />
 
       <div className="grid gap-4">
         {Object.entries(cache.recommendations).map(([name, info]) => (
