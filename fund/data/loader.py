@@ -51,10 +51,29 @@ def _clip(s: PriceSeries, start: date, end: date) -> PriceSeries:
     return PriceSeries(s.symbol, tuple(ds), tuple(cs))
 
 
+CACHE_STALE_DAYS = 3  # refetch any cache whose last bar is > N days before `end`
+
+
+def _is_stale(series: PriceSeries, end: date, stale_days: int) -> bool:
+    """A cache is stale if its most recent bar is more than `stale_days` before
+    `end` — accounting for weekends/holidays. Used by the daily ops loop so
+    yesterday's tickets don't get sized against last month's price."""
+    if not series.dates:
+        return True
+    last = series.dates[-1]
+    # Don't trigger refresh just because `end` is a weekend with no new bar yet.
+    requested_floor = end
+    while requested_floor.weekday() >= 5:  # roll to most recent weekday
+        requested_floor = date.fromordinal(requested_floor.toordinal() - 1)
+    return (requested_floor - last).days > stale_days
+
+
 def load_panel(symbols: list[str], start: date, end: date, *,
-               source: str = "auto", seed: int = 7) -> tuple[Panel, PriceSeries]:
+               source: str = "auto", seed: int = 7,
+               stale_days: int = CACHE_STALE_DAYS) -> tuple[Panel, PriceSeries]:
     """source: 'real' (network required), 'synthetic' (offline, deterministic),
-    or 'auto' (cache -> real -> synthetic)."""
+    or 'auto' (cache -> real -> synthetic). Cached price files older than
+    `stale_days` vs `end` are refetched when source != 'synthetic'."""
     if source == "synthetic":
         return (synth_panel(symbols, start, end, seed=seed),
                 synth_tbill(start, end, seed=seed))
@@ -63,6 +82,15 @@ def load_panel(symbols: list[str], start: date, end: date, *,
     try:
         for sym in symbols:
             cached = _load_cached(sym)
+            if cached is not None and _is_stale(cached, end, stale_days) \
+                    and source in ("auto", "real"):
+                # Stale cache — fetch fresh and replace
+                try:
+                    fresh = _fetch_price(sym)
+                    _save(fresh)
+                    cached = fresh
+                except DataUnavailable:
+                    pass  # fall back to whatever stale data we had
             if cached is None:
                 if source in ("auto", "real"):
                     cached = _fetch_price(sym)
@@ -71,6 +99,14 @@ def load_panel(symbols: list[str], start: date, end: date, *,
                     raise DataUnavailable(f"no cache and source={source}")
             series[sym] = _clip(cached, start, end)
         tbill = _load_cached(TBILL_FRED_SERIES)
+        if tbill is not None and _is_stale(tbill, end, stale_days) \
+                and source in ("auto", "real"):
+            try:
+                fresh_t = fetch_fred(TBILL_FRED_SERIES)
+                _save(fresh_t)
+                tbill = fresh_t
+            except DataUnavailable:
+                pass
         if tbill is None:
             tbill = fetch_fred(TBILL_FRED_SERIES)
             _save(tbill)
