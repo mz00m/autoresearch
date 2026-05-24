@@ -1,7 +1,9 @@
+import { ActionBar } from "@/components/ActionBar";
 import { EquityChart } from "@/components/EquityChart";
 import { HoldingsTable } from "@/components/HoldingsTable";
 import { KpiRow } from "@/components/KpiRow";
 import { SendOrdersButton } from "@/components/SendOrdersButton";
+import { StrategyPicker } from "@/components/StrategyPicker";
 import { TicketsTable } from "@/components/TicketsTable";
 import { VerdictCard } from "@/components/VerdictCard";
 import {
@@ -128,6 +130,11 @@ export default async function TodayPage() {
 
       <VerdictCard decision={decision} />
 
+      <div className="grid md:grid-cols-2 gap-4">
+        <ActionBar />
+        <StrategyPicker currentStrategy={pf.active_strategy} />
+      </div>
+
       <section>
         <SectionHeading
           eyebrow="Action"
@@ -138,7 +145,7 @@ export default async function TodayPage() {
           <SendOrdersButton hasPending={hasPending} />
           <TicketsTable
             tickets={pf.pending}
-            emptyText="No tickets. The book is already at target — no action today."
+            emptyText="No tickets. Run 'morning' above to generate them."
           />
         </div>
       </section>

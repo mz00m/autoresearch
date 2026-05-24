@@ -295,10 +295,50 @@ def _cli_init() -> None:
           f"strategy={strategy}, inception={pf.inception}")
 
 
+def _cli_switch() -> None:
+    """Switch the active strategy without losing positions/cash/history.
+
+    Tomorrow's morning will compute targets under the new strategy and
+    generate the BUY/SELL rotation tickets.
+    """
+    import sys
+    strategy = ""
+    params_json = "{}"
+    for i, a in enumerate(sys.argv):
+        if a == "--strategy" and i + 1 < len(sys.argv):
+            strategy = sys.argv[i + 1]
+        elif a == "--params" and i + 1 < len(sys.argv):
+            params_json = sys.argv[i + 1]
+    if not strategy:
+        print("switch requires --strategy NAME")
+        raise SystemExit(2)
+    try:
+        params = json.loads(params_json) if params_json else {}
+    except json.JSONDecodeError as e:
+        print(f"--params must be valid JSON: {e}")
+        raise SystemExit(2)
+    pf = Portfolio.load()
+    # Validate the strategy resolves before committing the change
+    try:
+        from fund.strategy.registry import build as build_strategy
+        build_strategy(strategy, params)
+    except Exception as e:
+        print(f"REJECTED: cannot build strategy {strategy!r}: {e}")
+        raise SystemExit(3)
+    old = pf.active_strategy
+    pf.active_strategy = strategy
+    pf.active_strategy_params = params
+    pf.save()
+    print(f"switched active strategy: {old} -> {strategy} "
+          f"{params if params else ''}")
+
+
 if __name__ == "__main__":
     import sys
     if "init" in sys.argv:
         _cli_init()
+    elif "switch" in sys.argv:
+        _cli_switch()
     else:
         try:
             pf = Portfolio.load()

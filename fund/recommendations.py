@@ -108,6 +108,26 @@ def compute_all(as_of: date, *, principal: float = 25_000.0,
             "prices": prices, "by_strategy": out}
 
 
+def compute_one(strategy: str, params: dict, as_of: date, *,
+                principal: float = 25_000.0, source: str = "auto") -> dict:
+    """Fast single-strategy preview — only loads what THIS strategy needs."""
+    from fund.strategy.registry import universe_for
+    syms = sorted(set(universe_for(strategy, params)) | {"SPY"})
+    panel, tbill = load_panel(list(syms), date(2005, 1, 1), as_of, source=source)
+    asof_date, prices = _most_recent_close(panel, as_of)
+    if asof_date is None:
+        raise RuntimeError(f"no prices available near {as_of}")
+    panel_pit = panel.as_of(asof_date)
+    tbill_pit = tbill.as_of(asof_date)
+    strat = build_strategy(strategy, params)
+    weights = strat.target_weights(panel_pit, tbill_pit)
+    allocation = _to_shares(weights, principal, prices)
+    return {"as_of": asof_date.isoformat(), "principal": principal,
+            "strategy": strategy, "params": params,
+            "weights": weights, "allocation": allocation,
+            "prices": prices}
+
+
 # --- console card ----------------------------------------------------------
 
 def _fmt_pct(x: float) -> str:
