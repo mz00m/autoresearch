@@ -1,40 +1,34 @@
 """honest_test.py — does adaptive's edge survive out-of-sample?
 
-The adaptive allocator picks tomorrow's strategy based on the last 90 days
-of every candidate's Sortino. The obvious failure mode is whipsaw: trailing
+The adaptive allocator picks tomorrow's strategy based on the last 90 days of
+every candidate's Sortino. The obvious failure mode is whipsaw: trailing
 winners mean-revert and adaptive chases noise. The fair test is whether
-adaptive *consistently* lands near the top across many regimes, not just
-the one window I happened to show in the demo.
+adaptive *consistently* lands near the top across many regimes, not just the
+one window I happened to pick for the demo.
 
-For each calendar year, runs every bench strategy on real data, ranks them,
-and aggregates. Useful diagnostics printed:
-
-  * cum return + max DD per (year, strategy)
-  * rank (1 = best, N = worst) per (year, strategy)
-  * average rank across years
-  * % of years adaptive finishes top-3
-  * adaptive's regret vs the in-hindsight winner each year
+For each calendar year, runs every bench strategy through the full window
+once (via fund.quick_eval — uses run_backtest directly, skipping the morning
++ closeout I/O of the production loop). Then aggregates: cum return per year,
+rank, average rank, % top-3 finishes, % beats SPY, regret vs in-hindsight
+winner.
 
 Run:
-  python3 -m fund.honest_test                   # 2018-2024, default 7 strategies
+  python3 -m fund.honest_test                   # 2018-2024
   python3 -m fund.honest_test --years 2010-2024 # longer span
-  python3 -m fund.honest_test --include leveraged_momentum   # opt-in to lev
+  python3 -m fund.honest_test --include leveraged_momentum
 """
 
 from __future__ import annotations
 
 import argparse
-import os
 import sys
-import tempfile
 from datetime import date
 
-from fund.portfolio import Portfolio
-from fund.simulate import simulate
+from fund.quick_eval import (full_backtest, panel_and_tbill,
+                             spy_window_return, universe_union, window_stats)
 
-# Default eval set — leveraged_momentum is excluded by default because its
-# leveraged-ETF data only stretches back to ~2010 cleanly, and its inclusion
-# muddies the apples-to-apples comparison. Opt in with --include.
+# Leveraged ETF data only goes back to ~2010 and skews comparisons earlier
+# than that — opt in via --include if you want it in the table.
 DEFAULT_STRATEGIES: list[tuple[str, dict]] = [
     ("sixty_forty", {}),
     ("dual_momentum", {"lookback_days": 252}),
@@ -45,112 +39,66 @@ DEFAULT_STRATEGIES: list[tuple[str, dict]] = [
 ]
 
 
-def _max_dd(history) -> float:
-    if not history:
-        return 0.0
-    peak = history[0].equity
-    mdd = 0.0
-    for h in history:
-        peak = max(peak, h.equity)
-        if peak > 0:
-            mdd = max(mdd, (peak - h.equity) / peak)
-    return mdd
-
-
-def _run_one(name: str, params: dict, days: int, end: date,
-             source: str = "auto") -> dict | None:
-    state = tempfile.mktemp(suffix=".json")
-    log = tempfile.mktemp(suffix=".tsv")
-    try:
-        pf, _ = simulate(days=days, end=end, principal=25_000.0,
-                         strategy=name, strategy_params=params,
-                         source=source, state_path=state, log_path=log,
-                         quiet=True)
-        if len(pf.history) < 2:
-            return None
-        cum = pf.history[-1].equity / pf.history[0].equity - 1.0
-        return {"cum": cum, "max_dd": _max_dd(pf.history),
-                "ending": pf.history[-1].equity}
-    finally:
-        for p in (state, log):
-            if os.path.exists(p):
-                os.unlink(p)
-
-
-def _spy_year_return(year: int, source: str = "auto") -> float | None:
-    """Use simulate's panel loader to get SPY's calendar-year total return.
-    Quick way to get the benchmark for a year without writing a separate path."""
-    from fund.data.loader import load_panel
-    panel, _ = load_panel(["SPY"], date(2005, 1, 1),
-                          date(year, 12, 31), source=source)
-    spy = panel.series.get("SPY")
-    if spy is None or len(spy.dates) < 2:
-        return None
-    start_slice = spy.as_of(date(year - 1, 12, 31))
-    end_slice = spy.as_of(date(year, 12, 31))
-    if not start_slice.closes or not end_slice.closes:
-        return None
-    return end_slice.closes[-1] / start_slice.closes[-1] - 1.0
-
-
 def evaluate(years: list[int], strategies: list[tuple[str, dict]],
-             *, source: str = "auto") -> dict:
-    """Returns a nested dict {year: {strategy_id: result_or_None}} plus SPY."""
-    results: dict = {"by_year": {}, "spy": {}}
+             source: str = "auto") -> dict:
+    end = date(years[-1], 12, 31)
+    symbols = universe_union(strategies) + ["SPY"]
+    print(f"loading {len(symbols)} symbols through {end}...")
+    panel, tbill = panel_and_tbill(sorted(set(symbols)), end, source=source)
+
+    print(f"running {len(strategies)} strategies once each over full panel...")
+    results_by_strategy: dict[str, "BacktestResult"] = {}
+    for name, params in strategies:
+        tag = f"{name}{(' ' + ','.join(f'{k}={v}' for k, v in params.items())) if params else ''}"
+        print(f"  {tag}")
+        results_by_strategy[name] = full_backtest(name, params, panel, tbill)
+
+    # Slice each strategy's returns by calendar year
+    out: dict = {"by_year": {}, "spy": {}, "years": years}
     for year in years:
-        end = date(year, 12, 31)
-        print(f"\n=== {year} ===")
-        spy = _spy_year_return(year, source=source)
-        results["spy"][year] = spy
-        if spy is not None:
-            print(f"  {'SPY':<20} {spy * 100:+7.2f}%")
-        results["by_year"][year] = {}
+        y_start = date(year, 1, 1)
+        y_end = date(year, 12, 31)
+        out["spy"][year] = spy_window_return(panel, y_start, y_end)
+        out["by_year"][year] = {}
         for name, params in strategies:
-            tag = f"{name}{(' ' + ','.join(f'{k}={v}' for k, v in params.items())) if params else ''}"
-            r = _run_one(name, params, 252, end, source=source)
-            results["by_year"][year][name] = r
-            if r:
-                print(f"  {tag:<32} {r['cum'] * 100:+7.2f}%  dd -{r['max_dd'] * 100:5.2f}%")
-            else:
-                print(f"  {tag:<32}  (insufficient data)")
-    return results
+            stats = window_stats(results_by_strategy[name], y_start, y_end)
+            out["by_year"][year][name] = stats
+    return out
 
 
 def summarize(results: dict, strategy_names: list[str]) -> None:
-    years = sorted(results["by_year"])
-    if not years:
-        print("no results")
-        return
-
-    print("\n" + "=" * 78)
-    print("CUM RETURN BY YEAR (excluding strategies with any missing year)")
-    print("=" * 78)
-    # Header
-    header = f"  {'year':<6}{'SPY':>8}  "
+    years = results["years"]
+    print("\n" + "=" * 90)
+    print("CUM RETURN BY YEAR")
+    print("=" * 90)
+    header = f"  {'year':<6}{'SPY':>9}  "
     header += "  ".join(f"{n[:14]:>14}" for n in strategy_names)
     print(header)
     for year in years:
         row = f"  {year:<6}"
         spy = results["spy"].get(year)
-        row += f"{(spy * 100) if spy is not None else 0:>+7.2f}%  "
+        row += f"{(spy * 100) if spy is not None else 0:>+8.2f}%  "
         for n in strategy_names:
-            r = results["by_year"][year].get(n)
-            if r:
-                row += f"{r['cum'] * 100:>+13.2f}%  "
-            else:
+            r = results["by_year"][year].get(n) or {}
+            cum = r.get("cum")
+            if cum is None or r.get("n_days", 0) == 0:
                 row += f"{'—':>14}  "
+            else:
+                row += f"{cum * 100:>+13.2f}%  "
         print(row)
 
-    # Ranking aggregates
-    print("\n" + "=" * 78)
-    print("RANK BY YEAR  (1 = best, N = worst)   '*' = winner")
-    print("=" * 78)
+    print("\n" + "=" * 90)
+    print("RANK BY YEAR  (1 = best in cohort; '*' = winner)")
+    print("=" * 90)
+    print(f"  {'year':<6}        " + "  ".join(f"{n[:14]:>14}" for n in strategy_names))
     ranks: dict[str, list[int]] = {n: [] for n in strategy_names}
     for year in years:
         row = f"  {year:<6}        "
-        scored = [(n, results["by_year"][year][n]["cum"])
-                  for n in strategy_names
-                  if results["by_year"][year][n] is not None]
+        scored = []
+        for n in strategy_names:
+            r = results["by_year"][year].get(n) or {}
+            if r.get("n_days", 0) > 0:
+                scored.append((n, r["cum"]))
         scored.sort(key=lambda x: -x[1])
         rank_by_name = {n: i + 1 for i, (n, _) in enumerate(scored)}
         for n in strategy_names:
@@ -163,60 +111,81 @@ def summarize(results: dict, strategy_names: list[str]) -> None:
                 row += f"{'—':>14}  "
         print(row)
 
-    print("\n" + "=" * 78)
+    print("\n" + "=" * 90)
     print("SUMMARY")
-    print("=" * 78)
-    print(f"  {'strategy':<22} {'avg rank':>10} {'wins':>8} "
-          f"{'top-3':>8} {'>SPY':>8} {'avg cum':>10} {'avg DD':>10}")
+    print("=" * 90)
+    print(f"  {'strategy':<22} {'avg rank':>10} {'wins':>10} "
+          f"{'top-3':>10} {'>SPY':>10} {'avg cum':>10} {'avg DD':>10}")
     for n in strategy_names:
         rk_list = ranks[n]
         if not rk_list:
             continue
-        cums = [results["by_year"][y][n]["cum"]
-                for y in years if results["by_year"][y].get(n)]
-        dds = [results["by_year"][y][n]["max_dd"]
-               for y in years if results["by_year"][y].get(n)]
+        cums = [results["by_year"][y][n]["cum"] for y in years
+                if results["by_year"][y].get(n)
+                and results["by_year"][y][n].get("n_days", 0) > 0]
+        dds = [results["by_year"][y][n]["max_dd"] for y in years
+               if results["by_year"][y].get(n)
+               and results["by_year"][y][n].get("n_days", 0) > 0]
         wins = sum(1 for r in rk_list if r == 1)
         top3 = sum(1 for r in rk_list if r <= 3)
         beat_spy = sum(
             1 for y in years
-            if results["by_year"][y].get(n) and results["spy"].get(y) is not None
+            if results["by_year"][y].get(n)
+            and results["spy"].get(y) is not None
+            and results["by_year"][y][n].get("n_days", 0) > 0
             and results["by_year"][y][n]["cum"] > results["spy"][y]
         )
-        avg_cum = sum(cums) / len(cums)
-        avg_dd = sum(dds) / len(dds)
+        avg_cum = sum(cums) / len(cums) if cums else 0
+        avg_dd = sum(dds) / len(dds) if dds else 0
         avg_rank = sum(rk_list) / len(rk_list)
-        print(f"  {n:<22} {avg_rank:>10.2f} {wins:>4}/{len(rk_list):<3} "
-              f"{top3:>4}/{len(rk_list):<3} {beat_spy:>4}/{len(rk_list):<3} "
-              f"{avg_cum * 100:>+9.2f}% {-avg_dd * 100:>+9.2f}%")
+        print(f"  {n:<22} {avg_rank:>10.2f} {wins:>6}/{len(rk_list):<3}"
+              f"{top3:>6}/{len(rk_list):<3}{beat_spy:>6}/{len(rk_list):<3}"
+              f"{avg_cum * 100:>+9.2f}%{-avg_dd * 100:>+9.2f}%")
 
-    # Adaptive-specific: regret vs in-hindsight oracle each year
-    print("\n" + "=" * 78)
-    print("ADAPTIVE'S REGRET vs IN-HINDSIGHT BEST EACH YEAR")
-    print("=" * 78)
-    print(f"  {'year':<6} {'oracle':<22} {'oracle cum':>12} "
-          f"{'adaptive cum':>14} {'regret':>10}")
-    regrets = []
-    for year in years:
-        if "adaptive" not in strategy_names:
-            continue
-        ad = results["by_year"][year].get("adaptive")
-        if ad is None:
-            continue
-        candidates = [(n, results["by_year"][year][n]["cum"])
-                      for n in strategy_names if n != "adaptive"
-                      and results["by_year"][year].get(n) is not None]
-        if not candidates:
-            continue
-        oracle_name, oracle_cum = max(candidates, key=lambda x: x[1])
-        regret = oracle_cum - ad["cum"]
-        regrets.append(regret)
-        print(f"  {year:<6} {oracle_name:<22} {oracle_cum * 100:>+11.2f}%  "
-              f"{ad['cum'] * 100:>+13.2f}%  {regret * 100:>+9.2f}pp")
-    if regrets:
-        avg_regret = sum(regrets) / len(regrets)
-        print(f"  {'avg regret':<6} {'':<22} {'':<12}  {'':<14}  "
-              f"{avg_regret * 100:>+9.2f}pp")
+    # Adaptive-specific: regret vs in-hindsight oracle
+    if "adaptive" in strategy_names:
+        print("\n" + "=" * 90)
+        print("ADAPTIVE'S REGRET vs IN-HINDSIGHT BEST EACH YEAR")
+        print("=" * 90)
+        print(f"  {'year':<6} {'oracle':<24} {'oracle':>10} "
+              f"{'adaptive':>10} {'regret':>10}")
+        regrets = []
+        for year in years:
+            ad = results["by_year"][year].get("adaptive")
+            if not ad or ad.get("n_days", 0) == 0:
+                continue
+            candidates = [(n, results["by_year"][year][n]["cum"])
+                          for n in strategy_names if n != "adaptive"
+                          and results["by_year"][year].get(n)
+                          and results["by_year"][year][n].get("n_days", 0) > 0]
+            if not candidates:
+                continue
+            oracle_name, oracle_cum = max(candidates, key=lambda x: x[1])
+            regret = oracle_cum - ad["cum"]
+            regrets.append(regret)
+            print(f"  {year:<6} {oracle_name:<24}"
+                  f"{oracle_cum * 100:>+9.2f}%"
+                  f"{ad['cum'] * 100:>+9.2f}%"
+                  f"{regret * 100:>+9.2f}pp")
+        if regrets:
+            avg_regret = sum(regrets) / len(regrets)
+            print(f"\n  Adaptive's average annual regret vs oracle: "
+                  f"{avg_regret * 100:+.2f}pp")
+            beat_avg = sum(
+                1 for year in years
+                if results["by_year"][year].get("adaptive")
+                and results["by_year"][year]["adaptive"].get("n_days", 0) > 0
+                and (
+                    results["by_year"][year]["adaptive"]["cum"]
+                    > sum(results["by_year"][year][n]["cum"]
+                          for n in strategy_names if n != "adaptive"
+                          and results["by_year"][year].get(n))
+                       / max(1, sum(1 for n in strategy_names if n != "adaptive"
+                                    and results["by_year"][year].get(n)))
+                )
+            )
+            print(f"  Years adaptive beat the average-of-others: "
+                  f"{beat_avg}/{len(years)}")
 
 
 def main() -> int:
@@ -236,7 +205,6 @@ def main() -> int:
         if extra:
             strategies.append((extra, {}))
     strategy_names = [n for n, _ in strategies]
-
     results = evaluate(years, strategies, source=args.source)
     summarize(results, strategy_names)
     return 0

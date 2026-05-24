@@ -78,8 +78,14 @@ def _daily_cash_rate(tbill: PriceSeries, on: date) -> float:
 
 
 def run_backtest(strategy, panel: Panel, tbill: PriceSeries,
-                 costs: Costs = Costs()) -> BacktestResult:
-    dates = panel.common_dates()
+                 costs: Costs = Costs(),
+                 calendar_driver: str = "SPY") -> BacktestResult:
+    # SPY is the trading-day clock by default so symbols with shorter
+    # histories (BITO, leveraged ETFs) don't silently truncate the backtest.
+    # Strategies already handle missing-symbol days via their own None checks.
+    dates = panel.trading_dates(driver=calendar_driver) \
+            if panel.series.get(calendar_driver) is not None \
+            else panel.common_dates()
     if len(dates) < 2:
         return BacktestResult([], [])
     rebal = _month_starts(dates)

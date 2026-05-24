@@ -63,3 +63,17 @@ class Panel:
             return []
         sets = [set(ps.dates) for ps in self.series.values()]
         return sorted(set.intersection(*sets))
+
+    def trading_dates(self, driver: str = "SPY") -> list[date]:
+        """Calendar of trading days driven by one symbol's history.
+
+        Used by the backtester so symbols with shorter histories (e.g. BITO
+        only goes back to 2021) don't truncate the whole backtest. Each
+        candidate strategy already handles missing-data symbols by excluding
+        them at its decision step; this just lets the harness iterate over
+        every day the market was open.
+        """
+        ps = self.series.get(driver)
+        if ps is None:
+            return self.common_dates()
+        return list(ps.dates)
