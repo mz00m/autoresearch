@@ -13,6 +13,7 @@ from fund.strategy.leveraged_momentum import LEVERAGED_UNIVERSE, LeveragedMoment
 from fund.strategy.ma_crossover import MovingAverageCrossover
 from fund.strategy.risk_parity import RiskParity
 from fund.strategy.sixty_forty import SixtyForty
+from fund.strategy.stable_adaptive import StableAdaptiveAllocator
 from fund.strategy.top_n_momentum import TopNMomentum
 
 # Broad-asset menu the momentum strategies rotate over. The five originals are
@@ -79,13 +80,23 @@ def build(name: str, params: dict | None = None):
             ),
             lookback_days=int(params.get("lookback_days", 90)),
         )
+    if name == "stable_adaptive":
+        return StableAdaptiveAllocator(
+            candidates=tuple(
+                (n_, dict(p_)) for n_, p_ in
+                params.get("candidates", DEFAULT_CANDIDATES)
+            ),
+            lookback_windows=tuple(params.get("lookback_windows",
+                                              (180, 90, 60, 30))),
+            switch_margin=float(params.get("switch_margin", 0.30)),
+        )
     raise ValueError(f"unknown strategy: {name!r}")
 
 
 def list_strategies() -> list[str]:
     return ["sixty_forty", "dual_momentum", "risk_parity",
             "top_n_momentum", "ma_crossover",
-            "leveraged_momentum", "adaptive"]
+            "leveraged_momentum", "adaptive", "stable_adaptive"]
 
 
 def universe_for(name: str, params: dict | None = None) -> tuple[str, ...]:
@@ -98,8 +109,8 @@ def universe_for(name: str, params: dict | None = None) -> tuple[str, ...]:
         return (params.get("asset", "SPY"),)
     if name == "leveraged_momentum":
         return tuple(params.get("universe", LEVERAGED_UNIVERSE))
-    if name == "adaptive":
-        # Adaptive needs every symbol any candidate might pick.
+    if name in ("adaptive", "stable_adaptive"):
+        # Allocator needs every symbol any candidate might pick.
         cands = params.get("candidates", DEFAULT_CANDIDATES)
         syms: set[str] = set()
         for cand_name, cand_params in cands:

@@ -36,6 +36,7 @@ DEFAULT_STRATEGIES: list[tuple[str, dict]] = [
     ("top_n_momentum", {"n": 2, "lookback_days": 126}),
     ("ma_crossover", {"fast": 50, "slow": 200}),
     ("adaptive", {"lookback_days": 90}),
+    ("stable_adaptive", {}),
 ]
 
 
