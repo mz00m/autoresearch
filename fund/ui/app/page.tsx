@@ -5,6 +5,7 @@ import { HoldingsTable } from "@/components/HoldingsTable";
 import { KpiRow } from "@/components/KpiRow";
 import { SendOrdersButton } from "@/components/SendOrdersButton";
 import { StrategyPicker } from "@/components/StrategyPicker";
+import { ThesisPanel } from "@/components/ThesisPanel";
 import { TicketsTable } from "@/components/TicketsTable";
 import { VerdictCard } from "@/components/VerdictCard";
 import {
@@ -175,6 +176,8 @@ export default async function TodayPage() {
           <HoldingsTable positions={pf.positions} cash={pf.cash} prices={prices} />
         </div>
       </section>
+
+      <ThesisPanel heldSymbols={Object.keys(pf.positions).filter((s) => pf.positions[s].qty > 0)} />
 
       {fillsToday.length > 0 && (
         <section>
