@@ -3,9 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-type Action = "morning" | "closeout" | "refresh-cache" | "sync-alpaca";
+type Action = "morning" | "closeout" | "refresh-cache" | "sync-alpaca" | "cancel-alpaca";
 
-const ACTIONS: { id: Action; label: string; help: string; endpoint: string; body?: object }[] = [
+const ACTIONS: { id: Action; label: string; help: string; endpoint: string; body?: object; danger?: boolean }[] = [
   {
     id: "morning",
     label: "Run morning",
@@ -30,6 +30,14 @@ const ACTIONS: { id: Action; label: string; help: string; endpoint: string; body
     help: "Overwrite local portfolio state with Alpaca's actual cash + positions. Use after manual broker trades or after running the simulator.",
     endpoint: "/api/sync-from-broker",
     body: { broker: "alpaca" },
+  },
+  {
+    id: "cancel-alpaca",
+    label: "Cancel all Alpaca orders",
+    help: "DELETE every open order at the broker. Doesn't touch positions or local state. Use when you've fired the wrong tickets and want a clean slate.",
+    endpoint: "/api/cancel-orders",
+    body: { broker: "alpaca" },
+    danger: true,
   },
 ];
 
@@ -91,7 +99,11 @@ export function ActionBar() {
             onClick={() => run(a)}
             disabled={busy !== null}
             title={a.help}
-            className="px-3 py-1.5 rounded border border-rule text-sm font-sans bg-paper hover:bg-rule/30 disabled:opacity-50"
+            className={
+              a.danger
+                ? "px-3 py-1.5 rounded border text-sm font-sans bg-paper hover:bg-alert/10 border-alert/40 text-alert disabled:opacity-50"
+                : "px-3 py-1.5 rounded border border-rule text-sm font-sans bg-paper hover:bg-rule/30 disabled:opacity-50"
+            }
           >
             {busy === a.id ? "Running…" : a.label}
           </button>

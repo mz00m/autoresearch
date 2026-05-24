@@ -161,6 +161,32 @@ class AlpacaBroker:
             ))
         return out
 
+    def cancel_open_orders(self) -> dict:
+        """DELETE /v2/orders — cancels every open order at the broker.
+        Returns {"canceled": N, "errors": [...]}."""
+        # Get the list first so we can report what was canceled
+        opens = self._req("GET", "/v2/orders",
+                          params={"status": "open", "limit": "500"})
+        if not isinstance(opens, list):
+            opens = []
+        canceled = 0
+        errors: list[str] = []
+        for o in opens:
+            oid = o.get("id")
+            if not oid:
+                continue
+            try:
+                self._req("DELETE", f"/v2/orders/{oid}")
+                canceled += 1
+            except RuntimeError as e:
+                errors.append(f"{o.get('symbol','?')} {oid}: {e}")
+        return {"canceled": canceled, "errors": errors,
+                "would_have_canceled": [
+                    {"symbol": o.get("symbol"), "side": o.get("side"),
+                     "qty": o.get("qty"), "client_order_id": o.get("client_order_id")}
+                    for o in opens
+                ]}
+
     def account_snapshot(self) -> AccountSnapshot:
         acct = self._req("GET", "/v2/account")
         positions_raw = self._req("GET", "/v2/positions")
