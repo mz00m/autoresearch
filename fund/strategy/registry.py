@@ -11,10 +11,16 @@ from fund.strategy.adaptive import DEFAULT_CANDIDATES, AdaptiveAllocator
 from fund.strategy.dual_momentum import DualMomentum
 from fund.strategy.leveraged_momentum import LEVERAGED_UNIVERSE, LeveragedMomentum
 from fund.strategy.ma_crossover import MovingAverageCrossover
+from fund.strategy.multi import MultiStrategy
+from fund.strategy.regime_aware import RegimeAwareAllocator
 from fund.strategy.risk_parity import RiskParity
 from fund.strategy.sixty_forty import SixtyForty
 from fund.strategy.stable_adaptive import StableAdaptiveAllocator
 from fund.strategy.top_n_momentum import TopNMomentum
+
+# Macro tickers consumed by RegimeAwareAllocator. Kept separate from the
+# tradeable universe — these are signal-only.
+REGIME_SIGNALS = ("^VIX", "^TNX", "^IRX")
 
 # Broad-asset menu the momentum strategies rotate over. The five originals are
 # the textbook GEM universe (US equities, intl equities, bonds, gold, tech).
@@ -90,13 +96,24 @@ def build(name: str, params: dict | None = None):
                                               (180, 90, 60, 30))),
             switch_margin=float(params.get("switch_margin", 0.30)),
         )
+    if name == "regime_aware":
+        return RegimeAwareAllocator()
+    if name == "multi":
+        # Default blend: 60% momentum + 40% defensive. Override via params.
+        allocs = params.get("allocations") or [
+            ["top_n_momentum", {"n": 2, "lookback_days": 126}, 0.6],
+            ["risk_parity",    {"vol_window": 63},              0.4],
+        ]
+        norm = tuple((n_, dict(p_), float(w_)) for n_, p_, w_ in allocs)
+        return MultiStrategy(allocations=norm)
     raise ValueError(f"unknown strategy: {name!r}")
 
 
 def list_strategies() -> list[str]:
     return ["sixty_forty", "dual_momentum", "risk_parity",
             "top_n_momentum", "ma_crossover",
-            "leveraged_momentum", "adaptive", "stable_adaptive"]
+            "leveraged_momentum", "adaptive", "stable_adaptive",
+            "regime_aware", "multi"]
 
 
 def universe_for(name: str, params: dict | None = None) -> tuple[str, ...]:
@@ -115,5 +132,24 @@ def universe_for(name: str, params: dict | None = None) -> tuple[str, ...]:
         syms: set[str] = set()
         for cand_name, cand_params in cands:
             syms.update(universe_for(cand_name, cand_params))
+        return tuple(sorted(syms))
+    if name == "regime_aware":
+        # Tradeable union of routed strategies + the macro signal tickers.
+        from fund.strategy.regime_aware import DEFAULT_ROUTING
+        syms: set[str] = set(REGIME_SIGNALS)
+        for cand_name, cand_params in DEFAULT_ROUTING.values():
+            syms.update(universe_for(cand_name, cand_params))
+        return tuple(sorted(syms))
+    if name == "multi":
+        # Match the default blend resolved by build("multi", {})
+        allocs = params.get("allocations") or [
+            ["top_n_momentum", {"n": 2, "lookback_days": 126}, 0.6],
+            ["risk_parity",    {"vol_window": 63},              0.4],
+        ]
+        syms: set[str] = set()
+        for cand_name, cand_params, _w in allocs:
+            if cand_name == "cash":
+                continue
+            syms.update(universe_for(cand_name, dict(cand_params)))
         return tuple(sorted(syms))
     return tuple(params.get("universe", DEFAULT_UNIVERSE))
