@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body {
+    background: #fbfaf6;
+    color: #0f1115;
+    font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Helvetica Neue", system-ui, sans-serif);
+    font-feature-settings: "ss01" on, "cv11" on;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4 {
+    font-family: var(--font-serif), "Charter", Georgia, serif;
+    letter-spacing: -0.012em;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /* Editorial card chrome — subtle, low-noise */
+  .card {
+    @apply bg-white rounded-md border border-rule;
+  }
+  .eyebrow {
+    @apply text-[10px] uppercase tracking-eyebrow text-muted font-medium;
+  }
+  .rule-top {
+    @apply border-t border-rule;
+  }
+  .kpi-label {
+    @apply text-[10px] uppercase tracking-eyebrow text-muted font-medium;
+  }
+  .kpi-value {
+    @apply text-2xl font-medium num tracking-tight;
+  }
+  .tag {
+    @apply inline-flex items-center px-1.5 py-0.5 rounded text-[10px] uppercase tracking-eyebrow font-medium;
+  }
+  .tag-buy {
+    @apply bg-[#e6f1ea] text-[#0f5a26];
+  }
+  .tag-sell {
+    @apply bg-[#f3e7e7] text-[#7a1d1d];
+  }
+  .tag-rejected {
+    @apply bg-[#fdefd2] text-[#6b4a00];
+  }
+  .tag-filled {
+    @apply bg-[#e3e8f3] text-[#1c4f8e];
+  }
+}
+
+/* Reduce default chart overrides */
+.recharts-cartesian-axis-tick text {
+  fill: #6b6f76;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.recharts-cartesian-axis-line, .recharts-cartesian-axis-tick-line {
+  stroke: #cfccc2;
+}
