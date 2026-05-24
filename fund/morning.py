@@ -172,6 +172,8 @@ def main() -> int:
     ap.add_argument("--source", default="auto",
                     help="data source: auto | real | synthetic")
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--no-report", action="store_true",
+                    help="skip regenerating fund/daily.html")
     args = ap.parse_args()
     as_of = (date.fromisoformat(args.as_of) if args.as_of else date.today())
 
@@ -180,6 +182,13 @@ def main() -> int:
     if not args.quiet:
         _print_card(pf, tickets, prices, as_of)
     pf.save()
+    if not args.no_report:
+        from fund.closeout import DAILY_LOG
+        from fund.daily_report import write as write_report
+        path = write_report(pf, today_tickets=tickets, prices=prices,
+                            daily_log_path=DAILY_LOG, as_of=as_of)
+        if not args.quiet:
+            print(f"\nreport: {path}")
     return 0
 
 
