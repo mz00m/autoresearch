@@ -22,6 +22,7 @@ const nav = [
   { href: "/history", label: "History" },
   { href: "/compare", label: "Compare" },
   { href: "/strategies", label: "Strategies" },
+  { href: "/schedule", label: "Schedule" },
 ];
 
 export default function RootLayout({
