@@ -3,9 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-type Action = "morning" | "closeout" | "refresh-cache";
+type Action = "morning" | "closeout" | "refresh-cache" | "sync-alpaca";
 
-const ACTIONS: { id: Action; label: string; help: string; endpoint: string }[] = [
+const ACTIONS: { id: Action; label: string; help: string; endpoint: string; body?: object }[] = [
   {
     id: "morning",
     label: "Run morning",
@@ -23,6 +23,13 @@ const ACTIONS: { id: Action; label: string; help: string; endpoint: string }[] =
     label: "Refresh cards",
     help: "Recompute recommendations + tax + regime + drift cards.",
     endpoint: "/api/refresh-cache",
+  },
+  {
+    id: "sync-alpaca",
+    label: "Sync from Alpaca",
+    help: "Overwrite local portfolio state with Alpaca's actual cash + positions. Use after manual broker trades or after running the simulator.",
+    endpoint: "/api/sync-from-broker",
+    body: { broker: "alpaca" },
   },
 ];
 
@@ -45,7 +52,7 @@ export function ActionBar() {
       const resp = await fetch(a.endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source: "auto" }),
+        body: JSON.stringify(a.body ?? { source: "auto" }),
       });
       const data = (await resp.json()) as RunResult;
       setLast({ action: a.id, result: data });
