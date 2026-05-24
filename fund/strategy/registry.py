@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from fund.strategy.adaptive import DEFAULT_CANDIDATES, AdaptiveAllocator
 from fund.strategy.all_weather import AllWeather
+from fund.strategy.concentrated_leveraged import ConcentratedLeveraged
 from fund.strategy.dual_momentum import DualMomentum
 from fund.strategy.faber_gtaa import FABER_UNIVERSE, FaberGTAA
 from fund.strategy.leveraged_momentum import LEVERAGED_UNIVERSE, LeveragedMomentum
@@ -20,6 +21,7 @@ from fund.strategy.permanent_portfolio import PermanentPortfolio
 from fund.strategy.regime_aware import RegimeAwareAllocator
 from fund.strategy.risk_parity import RiskParity
 from fund.strategy.rp_with_crisis_hedge import RiskParityCrisisHedge
+from fund.strategy.single_stock_momentum import CURATED_STOCKS, SingleStockMomentum
 from fund.strategy.sixty_forty import SixtyForty
 from fund.strategy.skip_month_momentum import SkipMonthMomentum
 from fund.strategy.stable_adaptive import StableAdaptiveAllocator
@@ -168,6 +170,18 @@ def build(name: str, params: dict | None = None):
             lookback_days=int(params.get("lookback_days", 252)),
             vol_window=int(params.get("vol_window", 63)),
         )
+    if name == "single_stock_momentum":
+        return SingleStockMomentum(
+            universe=tuple(params.get("universe", CURATED_STOCKS)),
+            n=int(params.get("n", 2)),
+            lookback_days=int(params.get("lookback_days", 21)),
+            skip_lookback=int(params.get("skip_lookback", 0)),
+        )
+    if name == "concentrated_leveraged":
+        return ConcentratedLeveraged(
+            universe=tuple(params.get("universe", LEVERAGED_UNIVERSE)),
+            lookback_days=int(params.get("lookback_days", 42)),
+        )
     if name == "regime_aware":
         return RegimeAwareAllocator()
     if name == "multi":
@@ -190,7 +204,9 @@ def list_strategies() -> list[str]:
             "skip_month_momentum", "time_series_momentum",
             "faber_gtaa", "all_weather", "permanent_portfolio",
             "mean_reversion", "low_vol", "vix_gated_momentum",
-            "rp_crisis_hedge", "trend_carry"]
+            "rp_crisis_hedge", "trend_carry",
+            # 2026-05-25 creative aggressive layer
+            "single_stock_momentum", "concentrated_leveraged"]
 
 
 def universe_for(name: str, params: dict | None = None) -> tuple[str, ...]:
@@ -242,4 +258,8 @@ def universe_for(name: str, params: dict | None = None) -> tuple[str, ...]:
     if name == "rp_crisis_hedge":
         return tuple(sorted(set(params.get("universe", DEFAULT_UNIVERSE))
                             | {"TLT"}))
+    if name == "single_stock_momentum":
+        return tuple(params.get("universe", CURATED_STOCKS))
+    if name == "concentrated_leveraged":
+        return tuple(params.get("universe", LEVERAGED_UNIVERSE))
     return tuple(params.get("universe", DEFAULT_UNIVERSE))
