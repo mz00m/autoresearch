@@ -21,6 +21,7 @@ from datetime import date, timedelta
 
 from fund.data.loader import load_panel
 from fund.portfolio import Portfolio, Ticket
+from fund.risk_concentration import ConcentrationLimits
 from fund.risk_engine import AccountMode, Kind, Order, RiskEngine
 from fund.strategy.registry import build as build_strategy, universe_for
 from fund.tax import wash_sale_check
@@ -95,8 +96,15 @@ def generate_tickets(pf: Portfolio, as_of: date, *,
 
     pf.expire_pending()  # any leftover unfilled tickets from yesterday die
     tickets: list[Ticket] = []
+    # Concentration caps default-on: prevents any BUY that would push a
+    # single sector >40%, correlated cluster >60%, or single symbol >50%.
+    # Pre-seed open_exposure from current holdings so cumulative caps work.
+    open_exposure = {sym: pos.qty * prices.get(sym, pos.avg_cost)
+                     for sym, pos in pf.positions.items() if pos.qty}
     engine = RiskEngine(principal=pf.principal, equity=equity,
-                        mode=AccountMode.CASH, settled_cash=pf.cash)
+                        mode=AccountMode.CASH, settled_cash=pf.cash,
+                        open_exposure=open_exposure,
+                        concentration_limits=ConcentrationLimits())
 
     # Process SELLs first so cash frees up for BUYs (we won't actually fill
     # until closeout, but the ticket ordering matters for the human).

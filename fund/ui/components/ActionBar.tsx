@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 type Action = "morning" | "closeout" | "refresh-cache";
@@ -33,6 +34,7 @@ type RunResult = {
 };
 
 export function ActionBar() {
+  const router = useRouter();
   const [busy, setBusy] = useState<Action | null>(null);
   const [last, setLast] = useState<{ action: Action; result: RunResult } | null>(null);
 
@@ -47,6 +49,8 @@ export function ActionBar() {
       });
       const data = (await resp.json()) as RunResult;
       setLast({ action: a.id, result: data });
+      // Auto-refresh server components so the page reflects the new state
+      if (data.exit_code === 0) router.refresh();
     } catch (e: unknown) {
       setLast({
         action: a.id,

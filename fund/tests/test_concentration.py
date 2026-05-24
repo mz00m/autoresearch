@@ -17,20 +17,29 @@ def test_no_book_under_caps_passes():
 
 
 def test_sector_cap_rejects_overconcentration():
-    # XLE + USO both energy; together would be 12000 = 48% of 25k > 40% cap
-    book = {"XLE": 6_000}
-    reasons = evaluate(book, {"USO": 6_000}, equity=25_000)
+    # XLE + USO both energy; together 22000 = 88% of 25k > 85% default cap
+    book = {"XLE": 10_000}
+    reasons = evaluate(book, {"USO": 12_000}, equity=25_000)
     assert any("energy" in r for r in reasons)
 
 
-def test_single_symbol_cap_rejects():
-    reasons = evaluate({}, {"SPY": 15_000}, equity=25_000)
+def test_single_symbol_cap_off_by_default():
+    """Default single-symbol cap = 1.0 (off) — dual_momentum at 100% allowed."""
+    reasons = evaluate({}, {"SPY": 24_000}, equity=25_000)
+    assert not any("single-symbol" in r for r in reasons)
+
+
+def test_single_symbol_cap_when_explicitly_tightened():
+    """If you opt in to a 50% single-symbol cap, it fires."""
+    tighter = ConcentrationLimits(max_single_symbol_frac=0.50)
+    reasons = evaluate({}, {"SPY": 15_000}, equity=25_000, limits=tighter)
     assert any("SPY" in r and "single-symbol" in r for r in reasons)
 
 
 def test_correlated_cluster_cap_rejects():
     # SPY + QQQ + UPRO are all in the us_equity cluster
-    book = {"SPY": 8_000, "QQQ": 5_000}
+    # Default cap is 0.90; 24k = 96% > 90%
+    book = {"SPY": 12_000, "QQQ": 7_000}
     reasons = evaluate(book, {"UPRO": 5_000}, equity=25_000)
     assert any("correlated-cluster" in r for r in reasons)
 
@@ -43,9 +52,9 @@ def test_uncategorized_symbol_does_not_trigger_sector_cap():
 
 
 def test_engine_integration_rejects_sector_breach():
-    limits = ConcentrationLimits(max_sector_frac=0.40,
-                                  max_cluster_frac=0.60,
-                                  max_single_symbol_frac=0.50)
+    # Use a tight sector cap explicitly (default 0.85 is too permissive
+    # to test the rejection path)
+    limits = ConcentrationLimits(max_sector_frac=0.40)
     eng = RiskEngine(principal=25_000, equity=25_000,
                      mode=AccountMode.CASH, settled_cash=25_000,
                      concentration_limits=limits)

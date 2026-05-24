@@ -56,9 +56,14 @@ CORRELATION_GROUPS: list[set[str]] = [
 
 @dataclass(frozen=True)
 class ConcentrationLimits:
-    max_sector_frac: float = 0.40        # any one sector ≤ 40% of equity
-    max_cluster_frac: float = 0.60       # any correlation cluster ≤ 60% of equity
-    max_single_symbol_frac: float = 0.50  # any one symbol ≤ 50% of equity
+    # Defaults are deliberately permissive — they're meant to catch egregious
+    # accidental concentration (e.g., 95% in one sector from a chain of small
+    # adds), not block deliberately-concentrated strategies like dual_momentum
+    # (100% single symbol) or sixty_forty (60% in one sector). Tighten these
+    # explicitly when running a mandate that requires diversification.
+    max_sector_frac: float = 0.85         # any one sector ≤ 85% of equity
+    max_cluster_frac: float = 0.90        # any correlation cluster ≤ 90%
+    max_single_symbol_frac: float = 1.0   # off by default (ETF universe)
 
 
 def _sector_of(symbol: str) -> str:

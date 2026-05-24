@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 type Result = {
@@ -15,6 +16,7 @@ export function SendOrdersButton({
 }: {
   hasPending: boolean;
 }) {
+  const router = useRouter();
   const [broker, setBroker] = useState<"alpaca" | "ibkr">("alpaca");
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -41,6 +43,9 @@ export function SendOrdersButton({
       });
       const data = (await resp.json()) as Result;
       setResult(data);
+      // After a real send (not dry-run), refresh the page so pending tickets
+      // visibly clear once the broker accepts them.
+      if (!dryRun && data.exit_code === 0) router.refresh();
     } catch (e: unknown) {
       setResult({ error: (e as Error).message });
     } finally {

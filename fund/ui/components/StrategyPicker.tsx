@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 type Preview = {
@@ -38,9 +39,17 @@ export function StrategyPicker({
   currentStrategy: string | null;
   onSwitched?: () => void;
 }) {
+  const router = useRouter();
   const [selected, setSelected] = useState<string>(
     currentStrategy ?? "top_n_momentum"
   );
+  const initialSpec =
+    STRATEGIES.find((s) => s.id === (currentStrategy ?? "top_n_momentum")) ??
+    STRATEGIES[0];
+  const [paramsJson, setParamsJson] = useState<string>(
+    JSON.stringify(initialSpec.params, null, 0)
+  );
+  const [paramsError, setParamsError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [switchMsg, setSwitchMsg] = useState<string | null>(null);
@@ -48,14 +57,40 @@ export function StrategyPicker({
 
   const spec = STRATEGIES.find((s) => s.id === selected) ?? STRATEGIES[0];
 
+  const parsedParams = (): object | null => {
+    try {
+      const p = JSON.parse(paramsJson || "{}");
+      if (typeof p !== "object" || Array.isArray(p) || p === null) {
+        setParamsError("params must be a JSON object");
+        return null;
+      }
+      setParamsError(null);
+      return p;
+    } catch (e: unknown) {
+      setParamsError((e as Error).message);
+      return null;
+    }
+  };
+
+  const onSelect = (id: string) => {
+    setSelected(id);
+    const newSpec = STRATEGIES.find((s) => s.id === id) ?? STRATEGIES[0];
+    setParamsJson(JSON.stringify(newSpec.params, null, 0));
+    setParamsError(null);
+    setPreview(null);
+    setSwitchMsg(null);
+  };
+
   const runPreview = async () => {
+    const params = parsedParams();
+    if (params === null) return;
     setBusy(true);
     setSwitchMsg(null);
     try {
       const resp = await fetch("/api/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ strategy: spec.id, params: spec.params }),
+        body: JSON.stringify({ strategy: spec.id, params }),
       });
       setPreview(await resp.json());
     } catch (e: unknown) {
@@ -70,13 +105,18 @@ export function StrategyPicker({
   };
 
   const runSwitch = async () => {
+    const params = parsedParams();
+    if (params === null) {
+      setConfirming(false);
+      return;
+    }
     setBusy(true);
     setSwitchMsg(null);
     try {
       const resp = await fetch("/api/switch-strategy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ strategy: spec.id, params: spec.params }),
+        body: JSON.stringify({ strategy: spec.id, params }),
       });
       const data = await resp.json();
       setSwitchMsg(
@@ -85,6 +125,7 @@ export function StrategyPicker({
           : `✗ exit ${data.exit_code}: ${data.stderr || data.stdout}`
       );
       onSwitched?.();
+      if (data.exit_code === 0) router.refresh();
     } catch (e: unknown) {
       setSwitchMsg(`✗ ${(e as Error).message}`);
     } finally {
@@ -102,11 +143,7 @@ export function StrategyPicker({
       <div className="flex flex-wrap gap-3 items-center mt-3">
         <select
           value={selected}
-          onChange={(e) => {
-            setSelected(e.target.value);
-            setPreview(null);
-            setSwitchMsg(null);
-          }}
+          onChange={(e) => onSelect(e.target.value)}
           disabled={busy}
           className="px-3 py-1.5 rounded border border-rule bg-paper text-sm font-sans min-w-[280px]"
         >
@@ -125,6 +162,32 @@ export function StrategyPicker({
         >
           {busy && !confirming ? "Computing…" : "Preview"}
         </button>
+      </div>
+
+      <div className="mt-3">
+        <label className="block text-[10px] uppercase tracking-eyebrow text-muted font-sans mb-1">
+          Params (JSON — edit before previewing or switching)
+        </label>
+        <input
+          type="text"
+          value={paramsJson}
+          onChange={(e) => {
+            setParamsJson(e.target.value);
+            setParamsError(null);
+          }}
+          spellCheck={false}
+          disabled={busy}
+          placeholder='{"lookback_days": 126}'
+          className={`w-full px-2 py-1.5 rounded border bg-paper text-sm font-mono ${
+            paramsError ? "border-alert" : "border-rule"
+          }`}
+        />
+        {paramsError && (
+          <p className="text-xs text-alert mt-1 font-sans">{paramsError}</p>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-3 items-center mt-3">
         {selected !== currentStrategy && (
           !confirming ? (
             <button
