@@ -9,6 +9,7 @@ import path from "path";
 const FUND_ROOT = path.resolve(process.cwd(), "..");
 const STATE_PATH = path.join(FUND_ROOT, "portfolio_state.json");
 const LOG_PATH = path.join(FUND_ROOT, "daily_log.tsv");
+const UI_CACHE_PATH = path.join(FUND_ROOT, "ui_cache.json");
 
 export type Position = { qty: number; avg_cost: number };
 
@@ -204,4 +205,50 @@ export function formatPct(n: number, digits = 2) {
 export function formatPp(n: number, digits = 2) {
   const sign = n > 0 ? "+" : "";
   return `${sign}${(n * 100).toFixed(digits)}pp`;
+}
+
+// --- UI cache (recommendations + sell guide), produced by Python -----------
+
+export type RecAllocation = {
+  weight: number;
+  dollars: number;
+  shares: number;
+  price: number;
+};
+
+export type SellSignal = {
+  symbol: string;
+  qty: number;
+  cost: number;
+  last: number;
+  pnl_pct: number;
+  stop_loss_price: number;
+  trailing_stop_price: number;
+  strategy_exit: string;
+  action: "HOLD" | "WATCH" | "SELL";
+  reasons: string[];
+};
+
+export type UiCache = {
+  generated_at: string;
+  as_of: string;
+  principal: number;
+  active_strategy: string | null;
+  active_strategy_params: Record<string, unknown>;
+  recommendations: Record<
+    string,
+    { weights?: Record<string, number>; allocation?: Record<string, RecAllocation>; error?: string }
+  >;
+  prices: Record<string, number>;
+  sell_signals: SellSignal[];
+};
+
+export async function readUiCache(): Promise<UiCache | null> {
+  try {
+    const raw = await fs.readFile(UI_CACHE_PATH, "utf8");
+    return JSON.parse(raw) as UiCache;
+  } catch (e: unknown) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw e;
+  }
 }
