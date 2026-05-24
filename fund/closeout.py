@@ -73,9 +73,11 @@ def _spy_cum_return(panel, inception_iso: str, on: date) -> float | None:
 
 
 def close_out(pf: Portfolio, as_of: date, *,
-              source: str = "auto", slippage_bps: float = 5.0
+              source: str = "auto", slippage_bps: float = 5.0,
+              log_path: str | None = None,
               ) -> tuple[Portfolio, dict, dict]:
     """Fill pending tickets at `as_of` close, mark to market, record the day."""
+    log_path = log_path or DAILY_LOG
     # Always include SPY for the benchmark even if the strategy doesn't use it.
     symbols = sorted(set(universe_for(pf.active_strategy,
                                       pf.active_strategy_params))
@@ -132,7 +134,7 @@ def close_out(pf: Portfolio, as_of: date, *,
         "n_filled": n_filled, "n_rejected": n_rejected, "n_expired": n_expired,
         "note": "",
     }
-    _append_log(row)
+    _append_log(row, log_path)
     return pf, row, close
 
 
