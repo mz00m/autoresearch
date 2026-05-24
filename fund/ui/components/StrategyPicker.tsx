@@ -19,6 +19,10 @@ type Preview = {
   };
 };
 
+// Strategies surfaced in the picker. `adaptive` and `stable_adaptive` were
+// hidden after the multi-year honest test showed they consistently land at
+// the bottom of the bench (avg rank 4.14-4.29/6) — kept in the registry for
+// diagnostic backtests via fund.honest_test, but not for live allocation.
 const STRATEGIES = [
   { id: "sixty_forty", label: "60/40 (SPY/AGG)", params: {} },
   { id: "dual_momentum", label: "Dual momentum (252d)", params: { lookback_days: 252 } },
@@ -27,8 +31,6 @@ const STRATEGIES = [
   { id: "ma_crossover", label: "MA crossover 50/200 SPY", params: { fast: 50, slow: 200 } },
   { id: "leveraged_momentum", label: "Leveraged momentum (3x ETFs)", params: { n: 2, lookback_days: 63 } },
   { id: "regime_aware", label: "Regime-aware (VIX + curve)", params: {} },
-  { id: "adaptive", label: "Adaptive (trailing Sortino picker)", params: { lookback_days: 90 } },
-  { id: "stable_adaptive", label: "Stable adaptive (persistence-gated)", params: {} },
   { id: "multi", label: "Multi (60% top-N + 40% risk-parity)", params: {} },
 ] as const;
 

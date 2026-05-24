@@ -9,10 +9,13 @@ import { runPython } from "@/lib/run_py";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+// adaptive + stable_adaptive deliberately omitted — empirically poor (see
+// fund.honest_test). They remain callable via the registry for diagnostics
+// but the UI doesn't let you switch into them.
 const ALLOWED = new Set([
   "sixty_forty", "dual_momentum", "risk_parity",
   "top_n_momentum", "ma_crossover", "leveraged_momentum",
-  "adaptive", "stable_adaptive", "regime_aware", "multi",
+  "regime_aware", "multi",
 ]);
 
 export async function POST(req: NextRequest) {

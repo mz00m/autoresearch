@@ -64,10 +64,10 @@ team: pm + quant + risk_manager + execution + post_mortem.
 | `top_n_momentum` | 2 (n, lookback) | Equal-weight top-N trending assets above the T-bill gate. Variance-reduced cousin of `dual_momentum`. |
 | `ma_crossover` | 2 (fast, slow) | Classic 50/200 SMA regime filter. Slow but rarely whipsawed. |
 | `leveraged_momentum` | 2 (n, lookback) | Top-N momentum over a leveraged-ETF universe (TQQQ, SOXL, UPRO, TMF, UGL). High vol; bounded liability still holds. |
-| `adaptive` | 1 (lookback) | Meta-allocator: each rebalance, picks the candidate with the best trailing-90d Sortino. Honest test shows this *underperforms* — kept for diagnostics, not recommended live. |
-| `stable_adaptive` | 2 (windows, margin) | Persistence-gated adaptive: requires multi-window agreement + switch margin to rotate. Less whipsaw but still middle-of-pack. |
 | `regime_aware` | 0 | **Forward-correlated** — classifies VIX + yield curve + SPY trend into CALM/NORMAL/STRESSED/PANIC and routes to the right strategy. Not trailing-return chasing. |
 | `multi` | N (allocations) | Weighted blend of underlying strategies: `[(name, params, weight)]` summing to 1.0. Default 60% top_n_momentum + 40% risk_parity. |
+| ~~`adaptive`~~ | 1 (lookback) | **Deprecated** in UI. Multi-year honest_test put it at avg rank 4.1/6, +27pp annual regret vs oracle. Hidden from the dashboard picker; still callable via the registry for backtests. |
+| ~~`stable_adaptive`~~ | 2 (windows, margin) | **Deprecated** in UI. Less whipsaw than `adaptive` but still middle-of-pack. Same status. |
 
 Add a strategy by writing one file in `strategy/` and one line in
 `strategy/registry.py`. The active strategy lives in `portfolio_state.json` as
@@ -207,7 +207,7 @@ python3 -m fund.reconcile --broker ibkr
 The risk engine has already vetted every ticket before send_orders runs.
 The broker is a dumb wire; it cannot add or resize an order on its own.
 
-**Next:** append-only post-mortem journal feeding the daily card,
-drift-from-backtest detector (live Sharpe vs. backtest band — the §5
-graduation signal), broker-fill reconciliation websocket so the dashboard
-updates in real time.
+**Next:** append-only post-mortem journal feeding back into the daily card,
+broker-fill reconciliation via TWS streaming (replaces the 60s poll in
+`fire-and-watch`), Schwab adapter to widen broker support, in-CI Playwright
+runs (currently local only). See `fund/CHANGELOG.md` for the full ledger.
