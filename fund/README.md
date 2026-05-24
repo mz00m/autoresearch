@@ -112,7 +112,26 @@ python3 -m fund.closeout --source real
 # SIMULATE 30 days on real history to see what the loop produces
 python3 -m fund.simulate --days 30 --strategy sixty_forty
 # -> writes daily.html — open it: `open fund/daily.html`
+
+# COMPARE all strategies side-by-side on the same window (isolated, doesn't
+# touch your live state)
+python3 -m fund.compare --days 60
+# -> writes comparison.html — see if anything would beat your active strategy
 ```
+
+### "Are we on the right path?"
+
+Every `daily.html` leads with a one-line verdict, computed from the trailing 20
+days of `daily_log.tsv`:
+
+- **on track** — trailing excess > -1pp and drawdown < 8%
+- **watch** — trailing excess <= -1pp or drawdown >= 8%
+- **iterate** — trailing excess <= -3pp and hit-rate < 40% for >= 20 days
+
+Thresholds are conservative on purpose — the verdict triggers a human review,
+not an autonomous switch. Run `fund.compare` whenever the verdict turns yellow
+or red to see whether any other bench candidate would have done better in the
+same window.
 
 ### What the simulator says today
 
@@ -136,9 +155,10 @@ turns it into trades. The graduation gate in `fund.md` §5 demands much more.
 `program.md`, agent roles), the point-in-time data pipeline (Yahoo + FRED + SEC
 EDGAR with synthetic fallback), three strategy specs, the fixed backtest
 protocol, the overnight research loop, **and** the daily ops loop (portfolio
-state, morning trade guide, end-of-day closeout, HTML daily card, multi-day
-simulator). 75 tests, stdlib-only.
+state, morning trade guide, end-of-day closeout, HTML daily card with verdict,
+multi-day simulator, side-by-side strategy comparison). 92 tests, stdlib-only.
 
 **Next:** IBKR paper-trading adapter for live execution, append-only post-mortem
-journal feeding the daily card, drift detector (live Sharpe vs. backtest band),
-strategy A/B comparison across the bench.
+journal feeding the daily card, drift-from-backtest detector (live Sharpe vs.
+backtest band — the §5 graduation signal), more strategy families to widen the
+deflated-Sharpe correction.
