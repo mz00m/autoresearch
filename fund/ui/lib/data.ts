@@ -229,6 +229,39 @@ export type SellSignal = {
   reasons: string[];
 };
 
+export type TaxSummary = {
+  year: number;
+  st_gains: number;
+  st_losses: number;
+  lt_gains: number;
+  lt_losses: number;
+  net_short_term: number;
+  net_long_term: number;
+  net_total: number;
+  lot_count: number;
+  wash_sale_warnings: Record<string, string>;
+};
+
+export type RegimeSnapshot = {
+  regime: "CALM" | "NORMAL" | "STRESSED" | "PANIC" | "ERROR";
+  vix?: number | null;
+  curve_slope?: number | null;
+  spy_above_200d?: boolean | null;
+  routed_to?: string;
+  reason?: string;
+};
+
+export type DriftSnapshot = {
+  n_live: number;
+  n_backtest: number;
+  live_mean_annualized: number;
+  backtest_mean_annualized: number;
+  t_statistic: number;
+  p_value: number;
+  verdict: "in_band" | "drifting" | "drifted";
+  reason: string;
+};
+
 export type UiCache = {
   generated_at: string;
   as_of: string;
@@ -241,6 +274,9 @@ export type UiCache = {
   >;
   prices: Record<string, number>;
   sell_signals: SellSignal[];
+  tax_summary?: TaxSummary | null;
+  regime_snapshot?: RegimeSnapshot | null;
+  drift_snapshot?: DriftSnapshot | null;
 };
 
 export async function readUiCache(): Promise<UiCache | null> {

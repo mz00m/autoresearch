@@ -1,6 +1,7 @@
 import { EquityChart } from "@/components/EquityChart";
 import { HoldingsTable } from "@/components/HoldingsTable";
 import { KpiRow } from "@/components/KpiRow";
+import { SendOrdersButton } from "@/components/SendOrdersButton";
 import { TicketsTable } from "@/components/TicketsTable";
 import { VerdictCard } from "@/components/VerdictCard";
 import {
@@ -9,6 +10,10 @@ import {
   formatPct,
   readDailyLog,
   readPortfolio,
+  readUiCache,
+  type DriftSnapshot,
+  type RegimeSnapshot,
+  type TaxSummary,
   type Ticket,
 } from "@/lib/data";
 
@@ -17,38 +22,29 @@ export const dynamic = "force-dynamic";
 export default async function TodayPage() {
   const pf = await readPortfolio();
   const log = await readDailyLog();
+  const cache = await readUiCache();
   const decision = computeDecision(log);
 
   if (!pf) {
     return (
       <div className="card px-8 py-16 text-center">
         <h1 className="font-serif text-2xl font-semibold">No paper portfolio yet</h1>
-        <p className="text-muted mt-3 text-sm">
-          Initialize one from the terminal:
-        </p>
+        <p className="text-muted mt-3 text-sm">Initialize one from the terminal:</p>
         <pre className="font-mono text-xs bg-rule/40 inline-block mt-4 px-4 py-2 rounded">
-          python3 -m fund.portfolio init --principal 25000 --strategy sixty_forty
+          python3 -m fund.portfolio init --principal 25000 --strategy top_n_momentum
         </pre>
       </div>
     );
   }
 
-  // Reference prices for mark-to-market: prefer the most recent fill, fall
-  // back to avg_cost. (The Python morning/closeout writes the latest close
-  // into history; we don't have per-symbol "last close" in state without
-  // re-fetching, so we trust apply_fill's avg_cost as a recent proxy.)
   const prices: Record<string, number> = {};
+  if (cache?.prices) Object.assign(prices, cache.prices);
   for (const [sym, p] of Object.entries(pf.positions)) {
-    prices[sym] = p.avg_cost;
+    if (!(sym in prices)) prices[sym] = p.avg_cost;
   }
   for (const t of pf.filled.slice().reverse()) {
-    if (t.fill_price && !(t.symbol in prices && prices[t.symbol] !== 0)) {
+    if (t.fill_price && !(t.symbol in cache?.prices ?? {})) {
       prices[t.symbol] = t.fill_price;
-    }
-  }
-  for (const t of pf.pending) {
-    if (t.ref_price && !(t.symbol in prices && prices[t.symbol] !== 0)) {
-      prices[t.symbol] = t.ref_price;
     }
   }
 
@@ -66,13 +62,11 @@ export default async function TodayPage() {
   const today = new Date().toISOString().slice(0, 10);
   const fillsToday: Ticket[] = pf.filled.filter((t) => t.fill_date === today);
 
-  // Equity chart series (anchor at history[0] as 0%)
   const base = pf.history[0]?.equity ?? pf.principal;
   const portCurve = pf.history.map((h) => ({
     date: h.date,
     portfolio: base > 0 ? h.equity / base - 1 : 0,
   }));
-  // SPY benchmark from daily log (already cumulative)
   const dateToBench = new Map(
     log.map((r) => [r.date, r.benchmark_cum_return ?? 0])
   );
@@ -81,12 +75,18 @@ export default async function TodayPage() {
     benchmark: dateToBench.get(p.date) ?? null,
   }));
 
-  const strategyLabel = pf.active_strategy_params && Object.keys(pf.active_strategy_params).length > 0
-    ? `${pf.active_strategy} · ${Object.entries(pf.active_strategy_params).map(([k, v]) => `${k}=${v}`).join(", ")}`
-    : pf.active_strategy;
+  const strategyLabel =
+    pf.active_strategy_params && Object.keys(pf.active_strategy_params).length > 0
+      ? `${pf.active_strategy} · ${Object.entries(pf.active_strategy_params)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(", ")}`
+      : pf.active_strategy;
+
+  const hasPending = pf.pending.length > 0;
+  const washWarnings = Object.entries(cache?.tax_summary?.wash_sale_warnings ?? {});
 
   return (
-    <div className="space-y-12">
+    <div className="space-y-10">
       <header>
         <div className="eyebrow">Daily research note</div>
         <h1 className="font-serif text-4xl font-semibold tracking-tight mt-2">
@@ -132,15 +132,32 @@ export default async function TodayPage() {
         <SectionHeading
           eyebrow="Action"
           title="Today's recommendations"
-          help="What to send to the broker, in priority order. Every BUY has cleared the risk engine. SELLs only require ownership."
+          help="Every BUY has cleared the risk engine + concentration + wash-sale checks."
         />
-        <div className="mt-4">
+        <div className="mt-4 space-y-3">
+          <SendOrdersButton hasPending={hasPending} />
           <TicketsTable
             tickets={pf.pending}
             emptyText="No tickets. The book is already at target — no action today."
           />
         </div>
       </section>
+
+      {washWarnings.length > 0 && (
+        <WashSaleWarnings warnings={washWarnings} />
+      )}
+
+      <div className="grid md:grid-cols-3 gap-4">
+        {cache?.regime_snapshot && (
+          <RegimeCard r={cache.regime_snapshot} />
+        )}
+        {cache?.tax_summary && (
+          <TaxCard t={cache.tax_summary} />
+        )}
+        {cache?.drift_snapshot && (
+          <DriftCard d={cache.drift_snapshot} />
+        )}
+      </div>
 
       <section>
         <SectionHeading eyebrow="Position" title="Holdings" />
@@ -164,6 +181,8 @@ export default async function TodayPage() {
           <EquityChart rows={chartRows} />
         </div>
       </section>
+
+      <CacheFooter generatedAt={cache?.generated_at} />
     </div>
   );
 }
@@ -182,6 +201,165 @@ function SectionHeading({
       <div className="eyebrow">{eyebrow}</div>
       <h2 className="font-serif text-2xl font-semibold mt-1.5">{title}</h2>
       {help && <p className="text-sm text-muted mt-1.5 max-w-2xl">{help}</p>}
+    </div>
+  );
+}
+
+const REGIME_TONE = {
+  CALM: { border: "border-l-ok", text: "text-ok", label: "Calm" },
+  NORMAL: { border: "border-l-accent", text: "text-accent", label: "Normal" },
+  STRESSED: { border: "border-l-watch", text: "text-watch", label: "Stressed" },
+  PANIC: { border: "border-l-alert", text: "text-alert", label: "Panic" },
+  ERROR: { border: "border-l-muted", text: "text-muted", label: "Unavailable" },
+} as const;
+
+function RegimeCard({ r }: { r: RegimeSnapshot }) {
+  const tone = REGIME_TONE[r.regime];
+  return (
+    <article className={`card border-l-4 ${tone.border} px-5 py-4`}>
+      <div className="eyebrow">Macro regime</div>
+      <div className={`font-serif text-xl font-semibold mt-1 ${tone.text}`}>
+        {tone.label}
+      </div>
+      <p className="text-xs text-muted mt-2">
+        VIX <strong className="num text-ink">{r.vix?.toFixed(1) ?? "—"}</strong>
+        {" · "}10y−3mo{" "}
+        <strong className="num text-ink">
+          {r.curve_slope !== null && r.curve_slope !== undefined
+            ? `${r.curve_slope > 0 ? "+" : ""}${r.curve_slope.toFixed(2)}`
+            : "—"}
+        </strong>
+        {" · "}SPY{" "}
+        <strong className="text-ink">
+          {r.spy_above_200d === true
+            ? "above 200d"
+            : r.spy_above_200d === false
+            ? "below 200d"
+            : "—"}
+        </strong>
+      </p>
+      {r.routed_to && (
+        <p className="text-xs text-muted mt-2">
+          → Routed to <code className="font-mono">{r.routed_to}</code>
+        </p>
+      )}
+    </article>
+  );
+}
+
+function TaxCard({ t }: { t: TaxSummary }) {
+  return (
+    <article className="card border-l-4 border-l-accent px-5 py-4">
+      <div className="eyebrow">{t.year} realized P&amp;L (YTD)</div>
+      <div
+        className={`font-serif text-xl font-semibold mt-1 num ${
+          t.net_total > 0 ? "text-ok" : t.net_total < 0 ? "text-alert" : ""
+        }`}
+      >
+        {t.net_total >= 0 ? "+" : ""}
+        {formatMoney(t.net_total)}
+      </div>
+      <div className="text-xs text-muted mt-2 grid grid-cols-2 gap-y-1">
+        <span>Short-term net</span>
+        <span className="num text-right text-ink">
+          {t.net_short_term >= 0 ? "+" : ""}
+          {formatMoney(t.net_short_term)}
+        </span>
+        <span>Long-term net</span>
+        <span className="num text-right text-ink">
+          {t.net_long_term >= 0 ? "+" : ""}
+          {formatMoney(t.net_long_term)}
+        </span>
+        <span>Open tax lots</span>
+        <span className="num text-right text-ink">{t.lot_count}</span>
+      </div>
+    </article>
+  );
+}
+
+const DRIFT_TONE = {
+  in_band: { border: "border-l-ok", text: "text-ok", label: "In band" },
+  drifting: { border: "border-l-watch", text: "text-watch", label: "Drifting" },
+  drifted: { border: "border-l-alert", text: "text-alert", label: "Drifted" },
+} as const;
+
+function DriftCard({ d }: { d: DriftSnapshot }) {
+  const tone = DRIFT_TONE[d.verdict];
+  return (
+    <article className={`card border-l-4 ${tone.border} px-5 py-4`}>
+      <div className="eyebrow">
+        Live vs backtest · {d.n_live} live / {d.n_backtest} bt days
+      </div>
+      <div className={`font-serif text-xl font-semibold mt-1 ${tone.text}`}>
+        {tone.label}
+      </div>
+      <p className="text-xs text-muted mt-2">
+        Live <strong className="num text-ink">{(d.live_mean_annualized * 100).toFixed(1)}%/yr</strong>
+        {" vs backtest "}
+        <strong className="num text-ink">{(d.backtest_mean_annualized * 100).toFixed(1)}%/yr</strong>
+        {" · t="}
+        <strong className="num text-ink">{d.t_statistic.toFixed(2)}</strong>
+      </p>
+      <p className="text-[11px] text-muted mt-2 italic">{d.reason}</p>
+    </article>
+  );
+}
+
+function WashSaleWarnings({ warnings }: { warnings: [string, string][] }) {
+  return (
+    <article className="card border-l-4 border-l-watch px-5 py-4">
+      <div className="eyebrow">Wash-sale tracking</div>
+      <div className="font-serif text-lg font-semibold mt-1 text-watch">
+        {warnings.length} symbol{warnings.length === 1 ? "" : "s"} in 30-day window
+      </div>
+      <p className="text-xs text-muted mt-1">
+        BUYs in these symbols will be deferred to preserve the loss deduction
+        (IRC §1091).
+      </p>
+      <ul className="text-xs text-ink mt-3 space-y-1">
+        {warnings.map(([sym, soldOn]) => {
+          const sold = new Date(soldOn);
+          const elapsed = Math.floor(
+            (Date.now() - sold.getTime()) / (24 * 3600 * 1000)
+          );
+          const remaining = Math.max(0, 30 - elapsed + 1);
+          return (
+            <li key={sym} className="font-sans">
+              <strong className="font-mono">{sym}</strong>{" "}
+              <span className="text-muted">
+                sold at loss {soldOn} ({elapsed}d ago) · {remaining}d until clear
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </article>
+  );
+}
+
+function CacheFooter({ generatedAt }: { generatedAt?: string }) {
+  if (!generatedAt) {
+    return (
+      <div className="text-xs text-muted font-sans">
+        UI cache not generated yet — run{" "}
+        <code className="font-mono bg-rule/40 px-1 rounded">
+          python3 -m fund.cache_for_ui
+        </code>{" "}
+        to populate regime / tax / drift cards.
+      </div>
+    );
+  }
+  return (
+    <div className="text-xs text-muted font-sans border-t border-rule pt-4">
+      Cards on this page refreshed{" "}
+      <strong className="text-ink">
+        {new Date(generatedAt).toLocaleString()}
+      </strong>{" "}
+      — re-run{" "}
+      <code className="font-mono bg-rule/40 px-1 rounded">
+        python3 -m fund.cache_for_ui
+      </code>{" "}
+      to update.
     </div>
   );
 }

@@ -16,6 +16,7 @@ You can also wire this into a cron / launchd plist that runs at market close.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import sys
@@ -25,9 +26,93 @@ from datetime import date, datetime
 from fund.portfolio import Portfolio
 from fund.recommendations import compute_all
 from fund.sell_guide import compute as compute_sell
+from fund.tax import RealizedLot, summarize_realized
 
 CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                           "ui_cache.json")
+DAILY_LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "daily_log.tsv")
+
+
+def _ytd_tax_summary(pf: Portfolio, year: int) -> dict:
+    """YTD realized PnL bucketed into ST/LT gains/losses."""
+    lots: list[RealizedLot] = []
+    for r in pf.realized:
+        try:
+            sold = date.fromisoformat(r["date_sold"])
+        except Exception:
+            continue
+        if sold.year != year:
+            continue
+        lots.append(RealizedLot(
+            date_acquired=r["date_acquired"], date_sold=r["date_sold"],
+            qty=r["qty"], cost_per_share=r["cost_per_share"],
+            sale_price=r["sale_price"], long_term=r["long_term"],
+        ))
+    s = summarize_realized(lots)
+    return {
+        "year": year,
+        "st_gains": round(s.st_gains, 2), "st_losses": round(s.st_losses, 2),
+        "lt_gains": round(s.lt_gains, 2), "lt_losses": round(s.lt_losses, 2),
+        "net_short_term": round(s.net_short_term, 2),
+        "net_long_term": round(s.net_long_term, 2),
+        "net_total": round(s.net_total, 2),
+        "lot_count": sum(len(p.lots) for p in pf.positions.values()),
+        "wash_sale_warnings": dict(pf.last_loss_sales),
+    }
+
+
+def _regime_snapshot(pf: Portfolio, as_of: date, source: str) -> dict | None:
+    """If the active strategy is regime_aware, classify and return signals."""
+    if pf.active_strategy != "regime_aware":
+        return None
+    from fund.data.loader import load_panel
+    from fund.strategy.regime_aware import RegimeAwareAllocator
+    from fund.strategy.registry import universe_for
+    syms = list(universe_for("regime_aware", {}))
+    try:
+        panel, _tbill = load_panel(syms, date(2005, 1, 1), as_of, source=source)
+        allocator = RegimeAwareAllocator()
+        regime, signals = allocator.classify(panel.as_of(as_of))
+        return {"regime": regime,
+                "vix": signals.get("vix"),
+                "curve_slope": signals.get("curve_slope"),
+                "spy_above_200d": signals.get("spy_above_200d"),
+                "routed_to": allocator.routing.get(regime, ("?", {}))[0]}
+    except Exception as e:
+        return {"regime": "ERROR", "reason": str(e)}
+
+
+def _drift_snapshot(pf: Portfolio, as_of: date, source: str) -> dict | None:
+    """Run drift detector against the daily_log. Returns None if not enough
+    live data (< 10 days) or computation fails."""
+    if not os.path.exists(DAILY_LOG_PATH):
+        return None
+    with open(DAILY_LOG_PATH, newline="") as f:
+        rows = list(csv.DictReader(f, delimiter="\t"))
+    if len(rows) < 10:
+        return None
+    try:
+        live = [float(r["day_return"]) for r in rows if r.get("day_return")]
+    except (KeyError, ValueError):
+        return None
+    if len(live) < 10:
+        return None
+    try:
+        from fund.drift import evaluate
+        report = evaluate(pf.active_strategy, pf.active_strategy_params,
+                          live, source=source, as_of=as_of)
+        return {
+            "n_live": report.n_live, "n_backtest": report.n_backtest,
+            "live_mean_annualized": round(report.live_mean * 252, 4),
+            "backtest_mean_annualized": round(report.backtest_mean * 252, 4),
+            "t_statistic": round(report.t_statistic, 3),
+            "p_value": round(report.p_value_approx, 4),
+            "verdict": report.verdict,
+            "reason": report.reason,
+        }
+    except Exception:
+        return None
 
 
 def build(as_of: date, *, source: str = "auto",
@@ -49,6 +134,10 @@ def build(as_of: date, *, source: str = "auto",
         signals, _ = compute_sell(pf, as_of, source=source)
         sell_signals = [asdict(s) for s in signals]
 
+    tax = _ytd_tax_summary(pf, as_of.year) if pf is not None else None
+    regime = _regime_snapshot(pf, as_of, source) if pf is not None else None
+    drift = _drift_snapshot(pf, as_of, source) if pf is not None else None
+
     return {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "as_of": recs["as_of"],
@@ -58,6 +147,9 @@ def build(as_of: date, *, source: str = "auto",
         "recommendations": recs["by_strategy"],
         "prices": recs["prices"],
         "sell_signals": sell_signals,
+        "tax_summary": tax,
+        "regime_snapshot": regime,
+        "drift_snapshot": drift,
     }
 
 
