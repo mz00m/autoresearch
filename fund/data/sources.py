@@ -1,8 +1,10 @@
-"""Real data fetchers — prices (Stooq), macro (FRED), fundamentals (SEC EDGAR).
+"""Real data fetchers — prices (Yahoo + Stooq), macro (FRED), fundamentals (SEC).
 
 All keyless and stdlib-only (urllib). They are wired and ready; in a locked-down
 network they raise ``DataUnavailable`` and the loader falls back to synthetic
-data. Run where Stooq/FRED/SEC are allowlisted to get real data.
+data. Yahoo Finance's v8 chart JSON is the primary price source (Stooq started
+gating CSV downloads behind an API key in 2025); Stooq remains as a fallback
+where it works. Run where Yahoo/FRED/SEC are allowlisted to get real data.
 
 Point-in-time note for EDGAR: each XBRL fact carries both a period-end (`end`)
 and a *filing* date (`filed`). For honest backtests you may only "know" a
@@ -45,6 +47,67 @@ def _get(url: str, headers: dict | None = None, timeout: int = 15) -> str:
 
 def _iso(s: str) -> date:
     return datetime.strptime(s.strip(), "%Y-%m-%d").date()
+
+
+def fetch_yahoo(symbol: str, *, start: date | None = None,
+                end: date | None = None, interval: str = "1d") -> PriceSeries:
+    """Daily adjusted closes from Yahoo Finance v8 chart API. Keyless.
+
+    Returns adjusted closes (split + dividend adjusted) so total-return is
+    captured for ETFs that pay distributions. Yahoo's UA filter rejects empty
+    User-Agents, so we send a browser-ish one.
+
+    Always uses explicit period1/period2 unix timestamps — Yahoo's ``range=max``
+    silently downsamples to monthly bars on long histories, which would corrupt
+    a daily backtest. Default span: 1990-01-01..today.
+    """
+    sym = symbol.upper()
+    start = start or date(1990, 1, 1)
+    end = end or date.today()
+    p1 = int(datetime(start.year, start.month, start.day).timestamp())
+    p2 = int(datetime(end.year, end.month, end.day).timestamp()) + 86400
+    url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}"
+           f"?period1={p1}&period2={p2}&interval={interval}"
+           f"&events=div%2Csplit")
+    text = _get(url, headers={"User-Agent": "Mozilla/5.0 " + USER_AGENT,
+                              "Accept": "application/json"})
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise DataUnavailable(f"yahoo bad json for {sym!r}: {e}") from e
+    err = (data.get("chart") or {}).get("error")
+    if err:
+        raise DataUnavailable(f"yahoo error for {sym!r}: {err}")
+    result = ((data.get("chart") or {}).get("result") or [None])[0]
+    if not result:
+        raise DataUnavailable(f"yahoo empty result for {sym!r}")
+    stamps = result.get("timestamp") or []
+    # adjclose preferred; fall back to raw close if missing
+    adj_block = ((result.get("indicators") or {}).get("adjclose") or [{}])[0]
+    closes_raw = adj_block.get("adjclose")
+    if not closes_raw:
+        closes_raw = ((result.get("indicators") or {}).get("quote") or [{}])[0].get("close")
+    if not stamps or not closes_raw:
+        raise DataUnavailable(f"yahoo missing price arrays for {sym!r}")
+    dates: list[date] = []
+    closes: list[float] = []
+    for ts, c in zip(stamps, closes_raw):
+        if ts is None or c is None:
+            continue
+        dates.append(datetime.utcfromtimestamp(int(ts)).date())
+        closes.append(float(c))
+    if not dates:
+        raise DataUnavailable(f"yahoo parse empty for {sym!r}")
+    # Yahoo can return same date twice across timezone boundaries; dedupe.
+    seen = set()
+    uniq_d, uniq_c = [], []
+    for d, c in zip(dates, closes):
+        if d in seen:
+            continue
+        seen.add(d)
+        uniq_d.append(d)
+        uniq_c.append(c)
+    return PriceSeries(sym, tuple(uniq_d), tuple(uniq_c))
 
 
 def fetch_stooq(symbol: str) -> PriceSeries:

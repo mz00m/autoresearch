@@ -13,7 +13,7 @@ import os
 from datetime import date, datetime
 
 from fund.data.pit import Panel, PriceSeries
-from fund.data.sources import DataUnavailable, fetch_fred, fetch_stooq
+from fund.data.sources import DataUnavailable, fetch_fred, fetch_stooq, fetch_yahoo
 from fund.data.synthetic import synth_panel, synth_tbill
 
 CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache")
@@ -64,8 +64,8 @@ def load_panel(symbols: list[str], start: date, end: date, *,
         for sym in symbols:
             cached = _load_cached(sym)
             if cached is None:
-                if source == "auto" or source == "real":
-                    cached = fetch_stooq(sym)
+                if source in ("auto", "real"):
+                    cached = _fetch_price(sym)
                     _save(cached)
                 else:
                     raise DataUnavailable(f"no cache and source={source}")
@@ -81,3 +81,16 @@ def load_panel(symbols: list[str], start: date, end: date, *,
         print(f"[loader] real data unavailable ({e}); falling back to synthetic.")
         return (synth_panel(symbols, start, end, seed=seed),
                 synth_tbill(start, end, seed=seed))
+
+
+def _fetch_price(sym: str) -> PriceSeries:
+    """Try Yahoo first (keyless JSON), then Stooq. Raise DataUnavailable if both
+    fail so the caller can decide whether to fall back to synthetic."""
+    errors: list[str] = []
+    for name, fetch in (("yahoo", fetch_yahoo), ("stooq", fetch_stooq)):
+        try:
+            return fetch(sym)
+        except DataUnavailable as e:
+            errors.append(f"{name}: {e}")
+    raise DataUnavailable(f"no price source returned data for {sym!r}: "
+                          + " | ".join(errors))
