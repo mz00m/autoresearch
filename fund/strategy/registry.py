@@ -15,7 +15,22 @@ from fund.strategy.risk_parity import RiskParity
 from fund.strategy.sixty_forty import SixtyForty
 from fund.strategy.top_n_momentum import TopNMomentum
 
-DEFAULT_UNIVERSE = ("SPY", "EFA", "AGG", "GLD", "QQQ")
+# Broad-asset menu the momentum strategies rotate over. The five originals are
+# the textbook GEM universe (US equities, intl equities, bonds, gold, tech).
+# The four extensions give the strategies a chance to react to geopolitical /
+# energy / crypto regimes — when oil trends because of Mideast tension, or
+# BTC trends because of monetary regime change, momentum picks them up.
+DEFAULT_UNIVERSE = (
+    "SPY",  # US large-cap equity
+    "EFA",  # international developed equity
+    "AGG",  # aggregate bonds
+    "GLD",  # gold
+    "QQQ",  # Nasdaq-100 (tech)
+    "XLE",  # energy sector — moves on oil and geopolitical stress
+    "USO",  # WTI oil ETF — direct energy signal
+    "URA",  # uranium miners — nuclear/energy security signal
+    "BITO",  # BTC futures ETF — monetary regime signal
+)
 
 
 def build(name: str, params: dict | None = None):
