@@ -16,12 +16,16 @@ export type RunResult = {
   command: string;
 };
 
-export function runPython(args: string[], timeoutMs = 180_000): Promise<RunResult> {
+export function runPython(
+  args: string[],
+  timeoutMs = 180_000,
+  extraEnv: Record<string, string> = {},
+): Promise<RunResult> {
   return new Promise((resolve) => {
     const full = ["-u", ...args];
     const child = spawn("python3", full, {
       cwd: REPO_ROOT,
-      env: { ...process.env },
+      env: { ...process.env, ...extraEnv },
     });
     const timer = setTimeout(() => {
       child.kill("SIGKILL");

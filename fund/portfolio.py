@@ -26,8 +26,22 @@ from typing import Iterable
 from fund.tax import (LotPolicy, RealizedLot, TaxLot, realize_sale,
                       summarize_realized)
 
-STATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                          "portfolio_state.json")
+def _default_state_path() -> str:
+    """Single source of truth for the state path; respects env override.
+
+    FUND_PORTFOLIO_PATH lets a user run multiple accounts side by side
+    (taxable / IRA / etc.) by pointing at different JSON files. The
+    Next.js dashboard reads the same env var via FUND_PORTFOLIO_PATH
+    to choose which account to view.
+    """
+    env = os.environ.get("FUND_PORTFOLIO_PATH")
+    if env:
+        return env
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "portfolio_state.json")
+
+
+STATE_PATH = _default_state_path()
 
 
 @dataclass

@@ -7,7 +7,10 @@ import path from "path";
 
 // fund/ui/ sits inside fund/, so all artifacts are one dir up
 const FUND_ROOT = path.resolve(process.cwd(), "..");
-const STATE_PATH = path.join(FUND_ROOT, "portfolio_state.json");
+// FUND_PORTFOLIO_PATH lets the same dashboard target multiple accounts
+// (taxable / IRA / etc.) — set in .env.local or the shell that ran npm run dev.
+const STATE_PATH = process.env.FUND_PORTFOLIO_PATH ||
+                   path.join(FUND_ROOT, "portfolio_state.json");
 const LOG_PATH = path.join(FUND_ROOT, "daily_log.tsv");
 const UI_CACHE_PATH = path.join(FUND_ROOT, "ui_cache.json");
 

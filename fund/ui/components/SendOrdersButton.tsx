@@ -54,6 +54,35 @@ export function SendOrdersButton({
     }
   };
 
+  const runFireAndWatch = async () => {
+    setBusy(true);
+    setResult(null);
+    try {
+      const resp = await fetch("/api/fire-and-watch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ broker, waitSeconds: 60 }),
+      });
+      const data = await resp.json();
+      // Merge send + reconcile output into the existing result shape
+      const merged: Result = {
+        exit_code: data.reconciled?.exit_code ?? data.sent?.exit_code ?? -1,
+        stdout: `--- send_orders ---\n${data.sent?.stdout ?? ""}\n\n` +
+                `--- waited ${data.wait_seconds}s ---\n\n` +
+                `--- reconcile ---\n${data.reconciled?.stdout ?? "(skipped — send failed)"}`,
+        stderr: [data.sent?.stderr, data.reconciled?.stderr].filter(Boolean).join("\n"),
+        dry_run: false,
+      };
+      setResult(merged);
+      if (merged.exit_code === 0) router.refresh();
+    } catch (e: unknown) {
+      setResult({ error: (e as Error).message });
+    } finally {
+      setBusy(false);
+      setConfirming(false);
+    }
+  };
+
   return (
     <div className="card px-5 py-4 space-y-3">
       <div className="flex items-center gap-4 flex-wrap">
@@ -76,14 +105,25 @@ export function SendOrdersButton({
           {busy ? "Running…" : "Dry-run"}
         </button>
         {!confirming ? (
-          <button
-            type="button"
-            onClick={() => setConfirming(true)}
-            disabled={busy}
-            className="px-4 py-1.5 rounded text-sm font-sans font-semibold bg-accent text-white hover:opacity-90 disabled:opacity-50"
-          >
-            Send orders…
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => setConfirming(true)}
+              disabled={busy}
+              className="px-4 py-1.5 rounded text-sm font-sans font-semibold bg-accent text-white hover:opacity-90 disabled:opacity-50"
+            >
+              Send orders…
+            </button>
+            <button
+              type="button"
+              onClick={runFireAndWatch}
+              disabled={busy}
+              title="Send + wait 60s + reconcile in one shot"
+              className="px-4 py-1.5 rounded text-sm font-sans font-semibold border border-accent text-accent hover:bg-accent/10 disabled:opacity-50"
+            >
+              {busy ? "Running…" : "Fire and watch (60s)"}
+            </button>
+          </>
         ) : (
           <>
             <button
