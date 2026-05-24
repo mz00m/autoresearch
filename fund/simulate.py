@@ -88,7 +88,8 @@ def simulate(*, days: int = 30, end: date | None = None,
         pf.save(state_path)
         # CLOSEOUT — fill at today's close.
         pf = Portfolio.load(state_path)
-        pf, row, prices_close = close_out(pf, d, source=source)
+        pf, row, prices_close = close_out(pf, d, source=source,
+                                          log_path=log_path)
         pf.save(state_path)
         if not quiet and row:
             print(f"  {d}  day {float(row['day_return']) * 100:+5.2f}%  "

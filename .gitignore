@@ -26,3 +26,4 @@ fund/data/cache/
 fund/portfolio_state.json
 fund/daily_log.tsv
 fund/daily.html
+fund/comparison.html
