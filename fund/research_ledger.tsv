@@ -1,1 +1,23 @@
 timestamp	strategy_id	commit	status	oos_deflated_sharpe	oos_sortino	oos_max_dd	n_trials	n_params	objective	description
+2026-05-24T19:02:01+00:00	sixty_forty/60/40	9ac49a3	discard	0.0	0.0	0.0	22	0	0.0	proper_research IS->OOS split @ 2018-12-31 | IS Sortino +0.89
+2026-05-24T19:02:01+00:00	dual_momentum/dual-mom 126d	9ac49a3	discard	0.0	0.0	0.0	22	1	0.0	proper_research IS->OOS split @ 2018-12-31 | IS Sortino +0.33
+2026-05-24T19:02:01+00:00	dual_momentum/dual-mom 252d	9ac49a3	discard	0.0	0.0	0.0	22	1	0.0	proper_research IS->OOS split @ 2018-12-31 | IS Sortino +0.21
+2026-05-24T19:02:01+00:00	top_n_momentum/top2 63d	9ac49a3	discard	0.0	0.0	0.0	22	2	0.0	proper_research IS->OOS split @ 2018-12-31 | IS Sortino +0.34
+2026-05-24T19:02:01+00:00	top_n_momentum/top2 126d	9ac49a3	discard	0.0	0.0	0.0	22	2	0.0	proper_research IS->OOS split @ 2018-12-31 | IS Sortino +0.53
+2026-05-24T19:02:01+00:00	top_n_momentum/top2 252d	9ac49a3	discard	0.0	0.0	0.0	22	2	0.0	proper_research IS->OOS split @ 2018-12-31 | IS Sortino +0.39
+2026-05-24T19:02:01+00:00	top_n_momentum/top3 126d	9ac49a3	discard	0.0	0.0	0.0	22	2	0.0	proper_research IS->OOS split @ 2018-12-31 | IS Sortino +0.50
+2026-05-24T19:02:01+00:00	skip_month_momentum/skip-month 126-21	9ac49a3	discard	0.0	0.0	0.0	22	3	0.0	proper_research IS->OOS split @ 2018-12-31 | IS Sortino +0.34
+2026-05-24T19:02:01+00:00	skip_month_momentum/skip-month 252-21	9ac49a3	discard	0.0	0.0	0.0	22	3	0.0	proper_research IS->OOS split @ 2018-12-31 | IS Sortino +0.47
+2026-05-24T19:02:01+00:00	skip_month_momentum/skip-month top3 252-21	9ac49a3	discard	0.0	0.0	0.0	22	3	0.0	proper_research IS->OOS split @ 2018-12-31 | IS Sortino +0.57
+2026-05-24T19:02:01+00:00	time_series_momentum/tsmom 126d	9ac49a3	discard	0.0	0.0	0.0	22	1	0.0	proper_research IS->OOS split @ 2018-12-31 | IS Sortino +0.63
+2026-05-24T19:02:01+00:00	time_series_momentum/tsmom 252d	9ac49a3	discard	0.0	0.0	0.0	22	1	0.0	proper_research IS->OOS split @ 2018-12-31 | IS Sortino +0.56
+2026-05-24T19:02:01+00:00	risk_parity/risk-parity 63d	9ac49a3	discard	0.0	0.0	0.0	22	1	0.0	proper_research IS->OOS split @ 2018-12-31 | IS Sortino +0.73
+2026-05-24T19:02:01+00:00	risk_parity/risk-parity 126d	9ac49a3	discard	0.0	0.0	0.0	22	1	0.0	proper_research IS->OOS split @ 2018-12-31 | IS Sortino +0.76
+2026-05-24T19:02:01+00:00	ma_crossover/MA 50/200	9ac49a3	discard	0.0	0.0	0.0	22	2	0.0	proper_research IS->OOS split @ 2018-12-31 | IS Sortino +1.00
+2026-05-24T19:02:01+00:00	ma_crossover/MA 20/100	9ac49a3	discard	0.0	0.0	0.0	22	2	0.0	proper_research IS->OOS split @ 2018-12-31 | IS Sortino +0.80
+2026-05-24T19:02:01+00:00	faber_gtaa/Faber GTAA	9ac49a3	discard	0.0	0.0	0.0	22	0	0.0	proper_research IS->OOS split @ 2018-12-31 | IS Sortino +0.85
+2026-05-24T19:02:01+00:00	all_weather/All-Weather	9ac49a3	discard	0.0	0.0	0.0	22	0	0.0	proper_research IS->OOS split @ 2018-12-31 | IS Sortino +1.15
+2026-05-24T19:02:01+00:00	permanent_portfolio/Permanent Portfolio	9ac49a3	discard	0.9145	1.4001	0.1734	22	0	1.2803	proper_research IS->OOS split @ 2018-12-31 | IS Sortino +1.38 | WINNER
+2026-05-24T19:02:01+00:00	rp_crisis_hedge/RP + 15% TLT	9ac49a3	discard	0.0	0.0	0.0	22	0	0.0	proper_research IS->OOS split @ 2018-12-31 | IS Sortino +0.94
+2026-05-24T19:02:01+00:00	trend_carry/trend+carry	9ac49a3	discard	0.0	0.0	0.0	22	0	0.0	proper_research IS->OOS split @ 2018-12-31 | IS Sortino +0.44
+2026-05-24T19:02:01+00:00	low_vol/low-vol bottom-3	9ac49a3	discard	0.0	0.0	0.0	22	0	0.0	proper_research IS->OOS split @ 2018-12-31 | IS Sortino +1.16
