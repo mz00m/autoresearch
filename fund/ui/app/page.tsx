@@ -1,4 +1,5 @@
 import { ActionBar } from "@/components/ActionBar";
+import { CoachCard } from "@/components/CoachCard";
 import { EquityChart } from "@/components/EquityChart";
 import { HoldingsTable } from "@/components/HoldingsTable";
 import { KpiRow } from "@/components/KpiRow";
@@ -127,6 +128,8 @@ export default async function TodayPage() {
           { label: "Cash", value: formatMoney(pf.cash) },
         ]}
       />
+
+      {cache?.coach && <CoachCard coach={cache.coach} />}
 
       <VerdictCard decision={decision} />
 

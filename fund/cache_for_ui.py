@@ -137,6 +137,7 @@ def build(as_of: date, *, source: str = "auto",
     tax = _ytd_tax_summary(pf, as_of.year) if pf is not None else None
     regime = _regime_snapshot(pf, as_of, source) if pf is not None else None
     drift = _drift_snapshot(pf, as_of, source) if pf is not None else None
+    coach = _coach_report(pf, drift, tax) if pf is not None else None
 
     return {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
@@ -150,6 +151,41 @@ def build(as_of: date, *, source: str = "auto",
         "tax_summary": tax,
         "regime_snapshot": regime,
         "drift_snapshot": drift,
+        "coach": coach,
+    }
+
+
+def _coach_report(pf: Portfolio, drift: dict | None,
+                  tax: dict | None) -> dict | None:
+    """Synthesize verdict + drift + tax + wash + drawdown into one card."""
+    from fund.coach import synthesize
+    from fund.decision import evaluate as decision_eval
+
+    # Pull verdict from daily_log
+    rows: list[dict] = []
+    if os.path.exists(DAILY_LOG_PATH):
+        with open(DAILY_LOG_PATH, newline="") as f:
+            rows = list(csv.DictReader(f, delimiter="\t"))
+    decision = decision_eval(rows)
+    dd = decision.current_drawdown if decision else 0.0
+    excess_pp = decision.trailing_excess * 100 if decision else 0.0
+    report = synthesize(
+        decision_verdict=decision.verdict if decision else "ok",
+        decision_excess_pp=excess_pp,
+        drift_verdict=drift.get("verdict") if drift else None,
+        drift_reason=drift.get("reason") if drift else None,
+        tax_net_total=tax.get("net_total", 0.0) if tax else 0.0,
+        tax_net_long_term=tax.get("net_long_term", 0.0) if tax else 0.0,
+        wash_warnings=len(tax.get("wash_sale_warnings", {})) if tax else 0,
+        has_pending_tickets=len(pf.pending) > 0,
+        active_strategy=pf.active_strategy or "—",
+        current_drawdown=dd,
+    )
+    return {
+        "severity": report.severity,
+        "headline": report.headline,
+        "rationale": report.rationale,
+        "next_action": report.next_action,
     }
 
 

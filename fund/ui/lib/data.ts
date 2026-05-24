@@ -262,6 +262,13 @@ export type DriftSnapshot = {
   reason: string;
 };
 
+export type CoachReport = {
+  severity: "informational" | "watch" | "action" | "urgent";
+  headline: string;
+  rationale: string;
+  next_action: string;
+};
+
 export type UiCache = {
   generated_at: string;
   as_of: string;
@@ -277,6 +284,7 @@ export type UiCache = {
   tax_summary?: TaxSummary | null;
   regime_snapshot?: RegimeSnapshot | null;
   drift_snapshot?: DriftSnapshot | null;
+  coach?: CoachReport | null;
 };
 
 export async function readUiCache(): Promise<UiCache | null> {

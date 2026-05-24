@@ -18,12 +18,56 @@ Pure stdlib, idempotent, reads from daily_log + a single backtest pass.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
+import os
+import pickle
 from dataclasses import dataclass
+from datetime import date as _date, datetime as _datetime
 
 from fund.backtest import Costs, run_backtest
 from fund.data.loader import load_panel
 from fund.strategy.registry import build as build_strategy, universe_for
+
+# Cache backtest return-series so refresh-cache doesn't re-run a multi-year
+# backtest every time. Key = (strategy, params, panel-last-date). Files live
+# in ~/.fund/cache/ and are individually <1MB each.
+_CACHE_DIR = os.path.expanduser("~/.fund/cache/drift")
+
+
+def _cache_key(strategy: str, params: dict, panel_last_date: _date) -> str:
+    payload = json.dumps({"s": strategy, "p": params,
+                          "d": panel_last_date.isoformat()},
+                         sort_keys=True).encode()
+    return hashlib.sha256(payload).hexdigest()[:24]
+
+
+def _cache_path(key: str) -> str:
+    return os.path.join(_CACHE_DIR, f"{key}.pkl")
+
+
+def _cache_get(strategy: str, params: dict,
+               panel_last_date: _date) -> list[float] | None:
+    path = _cache_path(_cache_key(strategy, params, panel_last_date))
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "rb") as f:
+            return pickle.load(f)
+    except Exception:
+        return None
+
+
+def _cache_put(strategy: str, params: dict, panel_last_date: _date,
+               returns: list[float]) -> None:
+    os.makedirs(_CACHE_DIR, exist_ok=True)
+    path = _cache_path(_cache_key(strategy, params, panel_last_date))
+    try:
+        with open(path, "wb") as f:
+            pickle.dump(returns, f)
+    except Exception:
+        pass   # cache is best-effort; never block on a write failure
 
 
 @dataclass(frozen=True)
@@ -90,9 +134,19 @@ def evaluate(strategy: str, strategy_params: dict,
 
     syms = sorted(set(universe_for(strategy, strategy_params)) | {"SPY"})
     panel, tbill = load_panel(syms, date(2005, 1, 1), as_of, source=source)
-    strat = build_strategy(strategy, strategy_params)
-    bt = run_backtest(strat, panel, tbill, costs=Costs(slippage_bps=5.0))
-    bt_rets = bt.returns
+    panel_last = as_of
+    if panel is not None and getattr(panel, "series", None):
+        cands = [d for ps in panel.series.values() for d in ps.dates]
+        if cands:
+            panel_last = max(cands)
+    cached = _cache_get(strategy, strategy_params, panel_last)
+    if cached is not None:
+        bt_rets = cached
+    else:
+        strat = build_strategy(strategy, strategy_params)
+        bt = run_backtest(strat, panel, tbill, costs=Costs(slippage_bps=5.0))
+        bt_rets = bt.returns
+        _cache_put(strategy, strategy_params, panel_last, bt_rets)
     if len(bt_rets) < 50:
         return DriftReport(
             n_live=len(live_daily_returns), n_backtest=len(bt_rets),
