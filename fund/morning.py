@@ -25,6 +25,10 @@ from fund.risk_engine import AccountMode, Kind, Order, RiskEngine
 from fund.strategy.registry import build as build_strategy, universe_for
 
 REBALANCE_THRESHOLD = 0.01  # don't churn for sub-1% drift; spend bps elsewhere
+# Default: integer shares (IBKR cash-account semantics). Set to False to permit
+# fractional via Alpaca / Schwab. Set in env via FUND_WHOLE_SHARES_ONLY=0
+import os as _os
+WHOLE_SHARES_ONLY = _os.environ.get("FUND_WHOLE_SHARES_ONLY", "1") != "0"
 
 
 def _most_recent_prices(panel, on: date) -> dict[str, float]:
@@ -38,18 +42,25 @@ def _most_recent_prices(panel, on: date) -> dict[str, float]:
 
 
 def _target_shares(target_weights: dict[str, float], equity: float,
-                   prices: dict[str, float]) -> dict[str, int]:
-    """Convert {symbol: weight} -> {symbol: integer shares} using equity & price.
-    CASH gets dropped (residual). Whole shares only (IBKR cash semantics)."""
-    out: dict[str, int] = {}
+                   prices: dict[str, float],
+                   whole_shares_only: bool = WHOLE_SHARES_ONLY,
+                   ) -> dict[str, float]:
+    """Convert {symbol: weight} -> {symbol: share count}. CASH gets dropped
+    (residual). If whole_shares_only, floor to integers (IBKR cash semantics);
+    otherwise round to 4 decimal places (Alpaca / Schwab fractional support)."""
+    out: dict[str, float] = {}
     for sym, w in target_weights.items():
         if sym == "CASH":
             continue
         px = prices.get(sym)
         if not px or px <= 0 or w <= 0:
-            out[sym] = 0
+            out[sym] = 0.0
             continue
-        out[sym] = int((equity * w) // px)  # floor; residual stays in cash
+        raw_qty = (equity * w) / px
+        if whole_shares_only:
+            out[sym] = float(int(raw_qty))
+        else:
+            out[sym] = round(raw_qty, 4)
     return out
 
 
@@ -90,11 +101,11 @@ def generate_tickets(pf: Portfolio, as_of: date, *,
     # until closeout, but the ticket ordering matters for the human).
     sells, buys = [], []
     for sym in sorted(all_syms):
-        cur = current_q.get(sym, 0)
-        tgt = target_q.get(sym, 0)
+        cur = current_q.get(sym, 0.0)
+        tgt = target_q.get(sym, 0.0)
         delta = tgt - cur
         px = prices.get(sym)
-        if not px or delta == 0:
+        if not px or abs(delta) < 1e-6:
             continue
         notional = abs(delta) * px
         # threshold: skip tiny rebalances that just bleed costs
@@ -108,12 +119,12 @@ def generate_tickets(pf: Portfolio, as_of: date, *,
     # SELLs: no risk_engine check needed (reduces risk); just verify owned.
     for sym, qty, px in sells:
         cur = pf.positions.get(sym)
-        if cur is None or cur.qty < qty:
+        if cur is None or cur.qty + 1e-9 < qty:
             continue
-        rationale = (f"{pf.active_strategy}: trim {sym} from {cur.qty} to "
-                     f"{cur.qty - qty} (target weight {target_w.get(sym, 0):.2%})")
+        rationale = (f"{pf.active_strategy}: trim {sym} from {cur.qty:g} to "
+                     f"{cur.qty - qty:g} (target weight {target_w.get(sym, 0):.2%})")
         t = Ticket(ticket_id=uuid.uuid4().hex[:8], created=as_of.isoformat(),
-                   symbol=sym, side="SELL", qty=int(qty), ref_price=round(px, 4),
+                   symbol=sym, side="SELL", qty=qty, ref_price=round(px, 4),
                    rationale=rationale, risk_max_loss=0.0)
         tickets.append(t)
 
@@ -126,16 +137,16 @@ def generate_tickets(pf: Portfolio, as_of: date, *,
         if not verdict.approved:
             tickets.append(Ticket(
                 ticket_id=uuid.uuid4().hex[:8], created=as_of.isoformat(),
-                symbol=sym, side="BUY", qty=int(qty), ref_price=round(px, 4),
+                symbol=sym, side="BUY", qty=qty, ref_price=round(px, 4),
                 rationale=f"REJECTED by risk engine: {'; '.join(verdict.reasons)}",
                 risk_max_loss=verdict.max_loss, status="rejected"))
             continue
         engine.apply(order)
         rationale = (f"{pf.active_strategy}: take {sym} to target weight "
-                     f"{target_w.get(sym, 0):.2%} ({qty} sh @ ~${px:,.2f})")
+                     f"{target_w.get(sym, 0):.2%} ({qty:g} sh @ ~${px:,.2f})")
         tickets.append(Ticket(
             ticket_id=uuid.uuid4().hex[:8], created=as_of.isoformat(),
-            symbol=sym, side="BUY", qty=int(qty), ref_price=round(px, 4),
+            symbol=sym, side="BUY", qty=qty, ref_price=round(px, 4),
             rationale=rationale, risk_max_loss=verdict.max_loss))
 
     pf.pending = [t for t in tickets if t.status == "pending"]
@@ -161,7 +172,8 @@ def _print_card(pf: Portfolio, tickets: list[Ticket], prices: dict[str, float],
     print(f"tickets:   {len(tickets)}")
     for t in tickets:
         flag = {"pending": "  ", "rejected": "X ", "expired": ". "}[t.status]
-        print(f"  {flag}{t.side:4s} {t.qty:>5d} {t.symbol:<5s} "
+        qty_str = f"{t.qty:>8.4f}" if t.qty != int(t.qty) else f"{int(t.qty):>8d}"
+        print(f"  {flag}{t.side:4s} {qty_str} {t.symbol:<5s} "
               f"@ ~${t.ref_price:,.2f}   {t.rationale}")
 
 

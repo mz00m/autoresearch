@@ -163,6 +163,12 @@ class RiskEngine:
     open_positions_max_loss: float = 0.0    # sum of worst-case loss of open book
     drawdown_halt_frac: float | None = None  # e.g. 0.5 halts new risk if down 50%
     halted: bool = False
+    # Per-symbol open dollar exposure — drives the concentration checks layered
+    # on top of the bounded-liability rule. Independent of max_loss because for
+    # bounded instruments the two are usually equal, but conceptually distinct
+    # (exposure = market value, max_loss = worst-case downside).
+    open_exposure: dict[str, float] = field(default_factory=dict)
+    concentration_limits: object | None = None   # ConcentrationLimits or None
     _log: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -220,6 +226,19 @@ class RiskEngine:
                 )
                 self.halted = True
 
+        # 5) optional sector + correlated-cluster concentration caps
+        if self.concentration_limits is not None:
+            from fund.risk_concentration import evaluate as conc_eval
+            # Proposed exposure for this order = cash_required (for long-only
+            # bounded instruments, market value ≈ cash committed)
+            conc_reasons = conc_eval(
+                open_book=self.open_exposure,
+                proposed={order.symbol: cash_required},
+                equity=self.equity,
+                limits=self.concentration_limits,  # type: ignore[arg-type]
+            )
+            reasons.extend(conc_reasons)
+
         approved = len(reasons) == 0
         if approved:
             reasons.append("OK: bounded-liability, within equity and cash limits")
@@ -240,6 +259,9 @@ class RiskEngine:
         self.open_positions_max_loss = v.portfolio_max_loss_after
         if self.mode is AccountMode.CASH:
             self.settled_cash = (self.settled_cash or 0.0) - v.cash_required
+        self.open_exposure[order.symbol] = (
+            self.open_exposure.get(order.symbol, 0.0) + v.cash_required
+        )
         self._log.append(f"APPLIED {order.kind.value} {order.symbol} "
                          f"max_loss={v.max_loss:,.2f}")
         return v

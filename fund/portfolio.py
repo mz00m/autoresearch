@@ -29,8 +29,8 @@ STATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 @dataclass
 class Position:
-    qty: int = 0
-    avg_cost: float = 0.0   # $/share, cost basis
+    qty: float = 0.0          # shares — float to support fractional (Alpaca, Schwab)
+    avg_cost: float = 0.0     # $/share, cost basis
 
 
 @dataclass
@@ -40,7 +40,7 @@ class Ticket:
     created: str            # ISO date the ticket was written
     symbol: str
     side: str               # "BUY" | "SELL"
-    qty: int                # always > 0; side carries the sign
+    qty: float              # always > 0; side carries the sign. Fractional allowed.
     ref_price: float        # the price the guide used to size it
     rationale: str
     risk_max_loss: float
@@ -93,11 +93,12 @@ class Portfolio:
     def apply_fill(self, ticket: Ticket, fill_price: float, on: date,
                    slippage_bps: float = 5.0) -> None:
         """Commit a fill. Cash and position arithmetic; never bypasses the
-        already-checked risk verdict at ticket creation time."""
+        already-checked risk verdict at ticket creation time. Supports
+        fractional share quantities."""
         if ticket.status != "pending":
             raise ValueError(f"cannot fill non-pending ticket {ticket.ticket_id}")
         sign = +1 if ticket.side == "BUY" else -1
-        slip = fill_price * (slippage_bps / 1e4) * sign  # buy pays a bit more, sell receives a bit less
+        slip = fill_price * (slippage_bps / 1e4) * sign
         effective = fill_price + slip
         notional = effective * ticket.qty
         pos = self.positions.setdefault(ticket.symbol, Position())
@@ -111,12 +112,13 @@ class Portfolio:
             pos.qty = new_qty
             self.cash -= notional
         else:  # SELL
-            if ticket.qty > pos.qty:
+            if ticket.qty > pos.qty + 1e-9:
                 ticket.status = "rejected"
                 return
             pos.qty -= ticket.qty
             self.cash += notional
-            if pos.qty == 0:
+            if pos.qty <= 1e-9:
+                pos.qty = 0.0
                 pos.avg_cost = 0.0
         ticket.status = "filled"
         ticket.fill_date = on.isoformat()

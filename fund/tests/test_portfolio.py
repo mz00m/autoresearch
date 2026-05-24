@@ -153,6 +153,47 @@ def test_save_and_load_roundtrip():
         os.unlink(path)
 
 
+def test_apply_fill_supports_fractional_buy():
+    pf = Portfolio.fresh(10_000.0, date(2024, 1, 1))
+    # Buy 2.5 SPY @ $400 = $1000 notional
+    t = Ticket(ticket_id="frac", created="2024-01-02", symbol="SPY",
+               side="BUY", qty=2.5, ref_price=400.0,
+               rationale="fractional", risk_max_loss=1000.0)
+    pf.apply_fill(t, fill_price=400.0, on=date(2024, 1, 2), slippage_bps=0)
+    assert abs(pf.positions["SPY"].qty - 2.5) < 1e-9
+    assert abs(pf.cash - 9_000.0) < 1e-9
+
+
+def test_apply_fill_supports_fractional_sell_to_zero():
+    pf = Portfolio.fresh(10_000.0, date(2024, 1, 1))
+    pf.apply_fill(Ticket(ticket_id="b1", created="2024-01-02", symbol="SPY",
+                          side="BUY", qty=2.5, ref_price=400.0,
+                          rationale="", risk_max_loss=1000.0),
+                  fill_price=400.0, on=date(2024, 1, 2), slippage_bps=0)
+    # Sell exactly 2.5 — should leave qty=0, avg_cost=0
+    pf.apply_fill(Ticket(ticket_id="s1", created="2024-01-03", symbol="SPY",
+                          side="SELL", qty=2.5, ref_price=410.0,
+                          rationale="", risk_max_loss=0.0),
+                  fill_price=410.0, on=date(2024, 1, 3), slippage_bps=0)
+    assert pf.positions["SPY"].qty == 0.0
+    assert pf.positions["SPY"].avg_cost == 0.0
+
+
+def test_fractional_position_partial_sell_keeps_avg_cost():
+    pf = Portfolio.fresh(10_000.0, date(2024, 1, 1))
+    pf.apply_fill(Ticket(ticket_id="b1", created="2024-01-02", symbol="SPY",
+                          side="BUY", qty=10.0, ref_price=400.0,
+                          rationale="", risk_max_loss=4000.0),
+                  fill_price=400.0, on=date(2024, 1, 2), slippage_bps=0)
+    pf.apply_fill(Ticket(ticket_id="s1", created="2024-01-03", symbol="SPY",
+                          side="SELL", qty=3.75, ref_price=410.0,
+                          rationale="", risk_max_loss=0.0),
+                  fill_price=410.0, on=date(2024, 1, 3), slippage_bps=0)
+    assert abs(pf.positions["SPY"].qty - 6.25) < 1e-9
+    # avg_cost survives partial sells
+    assert pf.positions["SPY"].avg_cost == 400.0
+
+
 def test_expire_pending_clears_unfilled():
     pf = Portfolio.fresh(10_000.0, date(2024, 1, 1))
     pf.pending = [_t("BUY", "SPY", 10, 400.0), _t("SELL", "AGG", 5, 90.0)]
