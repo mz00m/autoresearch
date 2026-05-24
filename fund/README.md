@@ -63,6 +63,8 @@ team: pm + quant + risk_manager + execution + post_mortem.
 | `risk_parity` | 1 (vol window) | Inverse-volatility weights — bond-heavy by construction. |
 | `top_n_momentum` | 2 (n, lookback) | Equal-weight top-N trending assets above the T-bill gate. Variance-reduced cousin of `dual_momentum`. |
 | `ma_crossover` | 2 (fast, slow) | Classic 50/200 SMA regime filter. Slow but rarely whipsawed. |
+| `leveraged_momentum` | 2 (n, lookback) | Top-N momentum over a leveraged-ETF universe (TQQQ, SOXL, UPRO, TMF, UGL). High vol; bounded liability still holds. |
+| `adaptive` | 1 (lookback) | Meta-allocator: each rebalance, picks the candidate with the best trailing-90d Sortino. The "learning" piece. |
 
 Add a strategy by writing one file in `strategy/` and one line in
 `strategy/registry.py`. The active strategy lives in `portfolio_state.json` as
@@ -137,34 +139,58 @@ same window.
 
 ### What the simulator says today
 
-All five strategies, 90 calendar days ending 2025-04-30, real Yahoo data,
+All seven strategies, 90 calendar days ending 2025-04-30, real Yahoo data,
 $25k paper account, 5bp slippage modeled:
 
 | Strategy | Cum return | Max DD | Ending equity | vs SPY (−7.65%) |
 | --- | --- | --- | --- | --- |
-| `sixty_forty`    | −1.54%  | −10.93% | $24,614 | +6.1pp  |
-| `dual_momentum`  | +18.48% |  −5.57% | $29,619 | +26.1pp |
-| `risk_parity`    | +4.76%  |  −6.08% | $26,191 | +12.4pp |
-| `top_n_momentum` | +11.83% |  −7.21% | $27,957 | +19.5pp |
-| `ma_crossover`   | −9.64%  | −18.60% | $22,589 |  −2.0pp |
+| `dual_momentum`      | +18.48% |  −5.57% | $29,619 | +26.1pp |
+| `top_n_momentum`     | +11.83% |  −7.21% | $27,957 | +19.5pp |
+| `adaptive`           |  +7.33% |  −7.01% | $26,834 | +15.0pp |
+| `leveraged_momentum` |  +6.41% | −12.30% | $26,603 | +14.1pp |
+| `risk_parity`        |  +4.76% |  −6.08% | $26,191 | +12.4pp |
+| `sixty_forty`        |  −1.54% | −10.93% | $24,614 |  +6.1pp |
+| `ma_crossover`       |  −9.64% | −18.60% | $22,589 |  −2.0pp |
 
 `dual_momentum` (winner) ended the window holding GLD — it caught the gold
 rally while equities sold off. `ma_crossover` (worst) sat in cash through
-the rebound. **This is one window. It does not constitute alpha** — it's
-the demo that the daily loop actually picks up signal from real prices and
-turns it into trades. The graduation gate in `fund.md` §5 demands much more.
+the rebound. `adaptive` rotated, picked up most of the upside without the
+human having to call the regime. **This is one window. It does not constitute
+alpha** — the graduation gate in `fund.md` §5 demands much more.
 
 ## What's built vs. next
 
 **Built:** the un-modifiable spine (risk engine, scorer, ledger, `fund.md`,
 `program.md`, agent roles), the point-in-time data pipeline (Yahoo + FRED + SEC
-EDGAR with synthetic fallback), five strategy specs, the fixed backtest
-protocol, the overnight research loop, **and** the daily ops loop (portfolio
-state, morning trade guide, end-of-day closeout, HTML daily card with verdict,
-multi-day simulator, side-by-side strategy comparison). 99 tests + CI on every
-push, stdlib-only.
+EDGAR with synthetic fallback), **seven** strategy specs (including a leveraged
+ETF strategy and an adaptive meta-allocator), the fixed backtest protocol, the
+overnight research loop, the daily ops loop (portfolio state, morning trade
+guide, end-of-day closeout, HTML daily card with verdict, multi-day simulator,
+side-by-side strategy comparison), **broker adapters** for Alpaca and IBKR with
+a human-gated `send_orders` CLI, and a **Next.js dashboard** at `fund/ui/`.
+113 tests + CI on every push, stdlib-only on the Python side.
 
-**Next:** IBKR paper-trading adapter for live execution, append-only post-mortem
-journal feeding the daily card, drift-from-backtest detector (live Sharpe vs.
-backtest band — the §5 graduation signal), more strategy families to widen the
-deflated-Sharpe correction.
+### Wiring it to a real broker
+
+```bash
+# Alpaca (fastest — 5 minutes from sign-up to first paper fill)
+export ALPACA_API_KEY="PK..."
+export ALPACA_API_SECRET="..."
+python3 -m fund.morning --source real          # generate tickets
+python3 -m fund.send_orders --broker alpaca    # human-confirms each, fires
+python3 -m fund.reconcile --broker alpaca      # pull broker fills back
+
+# IBKR (long-term home — same flow, requires IB Gateway running)
+pip install ib_insync                          # one-time install
+# launch IB Gateway, log into paper account, enable API on port 7497
+python3 -m fund.send_orders --broker ibkr
+python3 -m fund.reconcile --broker ibkr
+```
+
+The risk engine has already vetted every ticket before send_orders runs.
+The broker is a dumb wire; it cannot add or resize an order on its own.
+
+**Next:** append-only post-mortem journal feeding the daily card,
+drift-from-backtest detector (live Sharpe vs. backtest band — the §5
+graduation signal), broker-fill reconciliation websocket so the dashboard
+updates in real time.
