@@ -1,10 +1,11 @@
+import { KeepAwakeToggle } from "@/components/KeepAwakeToggle";
 import { ScheduleControls } from "@/components/ScheduleControls";
 
 export const dynamic = "force-dynamic";
 
 export default async function SchedulePage() {
   return (
-    <div className="space-y-10">
+    <div className="space-y-8">
       <header>
         <div className="eyebrow">Automation</div>
         <h1 className="font-serif text-4xl font-semibold tracking-tight mt-2">
@@ -17,6 +18,8 @@ export default async function SchedulePage() {
           they stay manual per <code className="font-mono">fund.md §7</code>.
         </p>
       </header>
+
+      <KeepAwakeToggle />
 
       <ScheduleControls />
     </div>
