@@ -85,9 +85,30 @@ export function ThesisPanel({ heldSymbols }: { heldSymbols: string[] }) {
     }
   };
 
+  const seedFromJobsdata = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await fetch("/api/knowledge-jobsdata", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "seed" }),
+      });
+      const d = await r.json();
+      setMsg(d.exit_code === 0
+        ? `✓ jobsdata seed: ${(d.stdout || "").trim().split("\n").slice(-1)[0] || "done"}`
+        : `✗ ${d.stderr || d.stdout || "seed failed"}`);
+      await load();
+    } catch (e: unknown) {
+      setMsg(`✗ ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <article className="card border-l-4 border-l-accent px-5 py-4 space-y-3">
-      <div className="flex items-baseline justify-between">
+      <div className="flex items-baseline justify-between gap-4 flex-wrap">
         <div>
           <div className="eyebrow">Thesis</div>
           <h3 className="font-serif text-lg font-semibold mt-1">
@@ -99,6 +120,15 @@ export function ThesisPanel({ heldSymbols }: { heldSymbols: string[] }) {
             regardless of momentum.
           </p>
         </div>
+        <button
+          type="button"
+          onClick={seedFromJobsdata}
+          disabled={busy}
+          title="Pull thesis context from jobsdata.ai — hyperscaler capex curve, token-cost decline, displacement projections — and auto-attach starter theses to AI-exposed positions."
+          className="px-3 py-1.5 text-xs rounded border border-rule font-sans hover:bg-rule/30 disabled:opacity-50 whitespace-nowrap"
+        >
+          {busy ? "Seeding..." : "Seed from jobsdata.ai"}
+        </button>
       </div>
       {msg && (
         <p className={`text-sm ${msg.startsWith("✓") ? "text-ok" : "text-alert"}`}>
