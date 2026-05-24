@@ -35,8 +35,18 @@ DEFAULT_STRATEGIES: list[tuple[str, dict]] = [
     ("risk_parity", {"vol_window": 63}),
     ("top_n_momentum", {"n": 2, "lookback_days": 126}),
     ("ma_crossover", {"fast": 50, "slow": 200}),
-    ("adaptive", {"lookback_days": 90}),
-    ("stable_adaptive", {}),
+    # 2026-05-24 curiosity cycles — academic + practitioner literature
+    ("skip_month_momentum", {}),       # Jegadeesh-Titman 1993
+    ("time_series_momentum", {}),      # Moskowitz-Ooi-Pedersen 2012
+    ("faber_gtaa", {}),                # Faber 2007 GTAA
+    ("all_weather", {}),               # Bridgewater simplification
+    ("permanent_portfolio", {}),       # Harry Browne 1981
+    ("mean_reversion", {}),            # DeBondt-Thaler 1985 (expect negative)
+    ("low_vol", {}),                   # Frazzini-Pedersen BAB 2014
+    ("vix_gated_momentum", {}),        # Daniel-Moskowitz 2016 momentum crashes
+    ("rp_crisis_hedge", {}),           # RP + TLT tail-hedge
+    ("trend_carry", {}),               # Asness-Moskowitz-Pedersen 2013
+    ("vol_scaled_momentum", {}),       # falsified earlier; kept for record
 ]
 
 
