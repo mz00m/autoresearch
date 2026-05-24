@@ -61,6 +61,8 @@ team: pm + quant + risk_manager + execution + post_mortem.
 | `sixty_forty` | 0 | Fixed 60% SPY / 40% AGG. The baseline anyone has to beat. |
 | `dual_momentum` | 1 (lookback) | Antonacci-style GEM: best of universe, only if it beats T-bills. |
 | `risk_parity` | 1 (vol window) | Inverse-volatility weights — bond-heavy by construction. |
+| `top_n_momentum` | 2 (n, lookback) | Equal-weight top-N trending assets above the T-bill gate. Variance-reduced cousin of `dual_momentum`. |
+| `ma_crossover` | 2 (fast, slow) | Classic 50/200 SMA regime filter. Slow but rarely whipsawed. |
 
 Add a strategy by writing one file in `strategy/` and one line in
 `strategy/registry.py`. The active strategy lives in `portfolio_state.json` as
@@ -135,17 +137,20 @@ same window.
 
 ### What the simulator says today
 
-Three strategies, 90 calendar days ending 2025-04-30, real Yahoo data, $25k
-paper account, 5bp slippage modeled:
+All five strategies, 90 calendar days ending 2025-04-30, real Yahoo data,
+$25k paper account, 5bp slippage modeled:
 
 | Strategy | Cum return | Max DD | Ending equity | vs SPY (−7.65%) |
 | --- | --- | --- | --- | --- |
-| `sixty_forty`    | −1.54%  | −4.56% | $24,614 | +6.1pp |
-| `risk_parity`    | +4.76%  | −0.17% | $26,191 | +12.4pp |
-| `dual_momentum`  | +18.48% | −3.73% | $29,619 | +26.1pp |
+| `sixty_forty`    | −1.54%  | −10.93% | $24,614 | +6.1pp  |
+| `dual_momentum`  | +18.48% |  −5.57% | $29,619 | +26.1pp |
+| `risk_parity`    | +4.76%  |  −6.08% | $26,191 | +12.4pp |
+| `top_n_momentum` | +11.83% |  −7.21% | $27,957 | +19.5pp |
+| `ma_crossover`   | −9.64%  | −18.60% | $22,589 |  −2.0pp |
 
-`dual_momentum` ended the window holding GLD — it caught the gold rally while
-equities sold off. **This is one window. It does not constitute alpha** — it's
+`dual_momentum` (winner) ended the window holding GLD — it caught the gold
+rally while equities sold off. `ma_crossover` (worst) sat in cash through
+the rebound. **This is one window. It does not constitute alpha** — it's
 the demo that the daily loop actually picks up signal from real prices and
 turns it into trades. The graduation gate in `fund.md` §5 demands much more.
 
@@ -153,10 +158,11 @@ turns it into trades. The graduation gate in `fund.md` §5 demands much more.
 
 **Built:** the un-modifiable spine (risk engine, scorer, ledger, `fund.md`,
 `program.md`, agent roles), the point-in-time data pipeline (Yahoo + FRED + SEC
-EDGAR with synthetic fallback), three strategy specs, the fixed backtest
+EDGAR with synthetic fallback), five strategy specs, the fixed backtest
 protocol, the overnight research loop, **and** the daily ops loop (portfolio
 state, morning trade guide, end-of-day closeout, HTML daily card with verdict,
-multi-day simulator, side-by-side strategy comparison). 92 tests, stdlib-only.
+multi-day simulator, side-by-side strategy comparison). 99 tests + CI on every
+push, stdlib-only.
 
 **Next:** IBKR paper-trading adapter for live execution, append-only post-mortem
 journal feeding the daily card, drift-from-backtest detector (live Sharpe vs.

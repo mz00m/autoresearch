@@ -313,11 +313,22 @@ def _verdict_card(d) -> str:
                 '</div>')
     cls = d.verdict
     head = {"ok": "On track", "watch": "Watching", "iterate": "Consider iterating"}[cls]
+    suggestion = ""
+    if cls in ("watch", "iterate"):
+        suggestion = (
+            '<div class="reason" style="margin-top:6px">'
+            '<em>Run </em><code style="font-family:ui-monospace,Menlo,monospace;'
+            'font-size:12px;background:#f1efe8;padding:1px 4px;border-radius:2px">'
+            'python3 -m fund.compare --days 60</code><em> to see whether any other '
+            'bench candidate would have done better in this same window.</em>'
+            '</div>'
+        )
     return (
         f'<div class="verdict {cls}">'
         f'<div class="label">Decision &middot; {d.n_days}-day trailing</div>'
         f'<div class="head">{head}</div>'
         f'<div class="reason">{_html.escape(d.reason)}</div>'
+        f'{suggestion}'
         f'<div class="stats">'
         f'portfolio {d.trailing_return * 100:+.2f}%  &middot;  '
         f'SPY {d.trailing_benchmark * 100:+.2f}%  &middot;  '
