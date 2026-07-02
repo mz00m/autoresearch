@@ -2,6 +2,29 @@
 
 Reverse-chronological log of meaningful changes. Tests + small refactors omitted.
 
+## 2026-07-02 — rails around the aggressive layer
+
+### Added
+- **Options premium budget** (`fund/options_budget.py`): rolling-12-month
+  premium spend hard-capped at 12% of book (configurable). The bounded-loss
+  rule (§2) covers each call, but *repeated* premium spend was unbounded —
+  5% of book per conviction name per month is a 100%+ annualized burn if
+  calls keep expiring worthless. Actual fills recorded append-only via
+  `python3 -m fund.options_suggester --record SYMBOL COST`.
+- **Gap-stress tool** (`fund/gap_stress.py`): the adversarial review's
+  "stops are triggers, not floors" finding as a deterministic check. Per
+  held symbol: worst historical 1-day / 3-day drop, sessions that moved past
+  the stop distance, and the portfolio hit if stops gap-fill at historical
+  worst instead of at the trail.
+
+### Changed
+- **Options suggester hardened**: batch trimmed to the premium budget
+  (highest conviction first); one-contract suggestions that exceed the
+  sizing target by >1.5× are skipped instead of silently oversized
+  (`max(1, ...)` bug); every suggestion now carries a risk-engine
+  LONG_CALL verdict on the card, same sign-off discipline as equity
+  tickets; expiries land on real Fridays instead of spot+30d midweek.
+
 ## 2026-05-24 — autonomous overnight build
 
 ### Added
