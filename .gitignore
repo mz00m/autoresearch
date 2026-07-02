@@ -18,3 +18,19 @@ AGENTS.md
 
 # Experimental code/artifacts
 dev/
+
+# Fetched market-data cache (reproducible; never commit)
+fund/data/cache/
+
+# Operational state (lives on the laptop running the loop; never commit)
+fund/portfolio_state.json
+fund/daily_log.tsv
+fund/daily.html
+fund/comparison.html
+fund/recommendations.html
+fund/sell_guide.html
+fund/ui_cache.json
+fund/plan.html
+fund/theses.json
+fund/options_spend.json
+fund/thesis_outcomes.tsv

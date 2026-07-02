@@ -1,0 +1,26 @@
+name: fund tests
+
+on:
+  push:
+    paths:
+      - 'fund/**'
+      - '.github/workflows/fund-tests.yml'
+  pull_request:
+    paths:
+      - 'fund/**'
+      - '.github/workflows/fund-tests.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      # fund/ is pure stdlib — no install step needed
+      - name: Run all fund tests
+        run: python3 fund/tests/run_all.py
