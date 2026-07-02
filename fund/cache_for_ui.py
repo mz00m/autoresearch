@@ -139,6 +139,12 @@ def build(as_of: date, *, source: str = "auto",
     drift = _drift_snapshot(pf, as_of, source) if pf is not None else None
     coach = _coach_report(pf, drift, tax) if pf is not None else None
 
+    try:
+        from fund.scorecard import compute as compute_scorecard
+        scorecard = compute_scorecard(as_of, source=source, pf=pf)
+    except Exception as e:
+        scorecard = {"error": str(e), "rows": []}
+
     return {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "as_of": recs["as_of"],
@@ -152,6 +158,7 @@ def build(as_of: date, *, source: str = "auto",
         "regime_snapshot": regime,
         "drift_snapshot": drift,
         "coach": coach,
+        "scorecard": scorecard,
     }
 
 

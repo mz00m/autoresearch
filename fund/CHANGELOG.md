@@ -2,6 +2,23 @@
 
 Reverse-chronological log of meaningful changes. Tests + small refactors omitted.
 
+## 2026-07-02 — selection layer: scorecard + thesis calibration
+
+### Added
+- **Candidate scorecard** (`fund/scorecard.py` + `/scorecard` dashboard page):
+  one ranked table over the whole universe joining what was scattered across
+  five tools — multi-horizon momentum + 200d trend, annualized vol, gap
+  fragility (worst 1d/3d), regime tilt by asset class, thesis conviction,
+  held weight + unrealized P&L. Composite score is a documented sort
+  heuristic (trend ≤55 + regime ±10 + thesis ≤15 − fragility), not an
+  oracle. Wired into `cache_for_ui` so the dashboard picks it up.
+- **Thesis outcome tracking** (`fund/outcomes.py`): closing a thesis
+  (`python3 -m fund.outcomes close SYMBOL --reason ...`) records the
+  symbol's return vs SPY over the thesis window, hit/miss, and days held —
+  append-only. `report` prints calibration by conviction level: the table
+  that eventually answers whether conviction-4s beat conviction-3s (and
+  whether the options layer can have positive EV).
+
 ## 2026-07-02 — rails around the aggressive layer
 
 ### Added

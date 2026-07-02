@@ -288,6 +288,34 @@ export type UiCache = {
   regime_snapshot?: RegimeSnapshot | null;
   drift_snapshot?: DriftSnapshot | null;
   coach?: CoachReport | null;
+  scorecard?: Scorecard | null;
+};
+
+export type ScorecardRow = {
+  symbol: string;
+  asset_class: string;
+  price: number | null;
+  r21: number | null;
+  r63: number | null;
+  r252: number | null;
+  above_200d: boolean | null;
+  vol_annualized: number | null;
+  worst_1d: number | null;
+  worst_3d: number | null;
+  regime_tilt: number;
+  thesis_conviction: number;
+  thesis_age_days: number | null;
+  held_weight: number;
+  unrealized_pct: number | null;
+  score: number;
+  reason: string;
+};
+
+export type Scorecard = {
+  as_of?: string;
+  regime?: string;
+  rows: ScorecardRow[];
+  error?: string;
 };
 
 export async function readUiCache(): Promise<UiCache | null> {
